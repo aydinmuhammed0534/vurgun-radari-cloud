@@ -1,0 +1,45 @@
+name: Vurgun Radari 7/24 Bulut Botu
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+    inputs:
+      force_first_post:
+        description: 'İlk çalışmada en iyi 1 fırsatı paylaş (1 veya 0)'
+        required: false
+        default: '0'
+
+concurrency:
+  group: vurgun-radari-cloud
+  cancel-in-progress: false
+
+jobs:
+  hunt-deals:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Restore & Save SQLite Deal History Cache
+        uses: actions/cache@v4
+        with:
+          path: vurgun_radari.db
+          key: vurgun-db-${{ github.run_id }}
+          restore-keys: |
+            vurgun-db-
+
+      - name: Run Vurgun Radari Scan & Auto-Post (Telegram + X + ntfy)
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: '@vurgunradari'
+          AMAZON_AFFILIATE_TAG: 'vurgunradari-21'
+          X_API_KEY: ${{ secrets.X_API_KEY }}
+          X_API_SECRET: ${{ secrets.X_API_SECRET }}
+          X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
+          X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}
+          FORCE_FIRST_POST: ${{ github.event.inputs.force_first_post || '0' }}
+          CLOUD_SNIPER_CYCLES: '6'
+        run: python3 cloud_runner.py

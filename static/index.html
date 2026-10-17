@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VURGUN RADARI // Fiyat Hatası, Al-Sat Arbitraj, Telegram &amp; X Affiliate Botu</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div id="toast-container" class="toast-container"></div>
+
+  <header class="topbar">
+    <div class="brand">
+      <div class="pulse-dot"></div>
+      <div>
+        <h1>VURGUN RADARI <span class="badge-live">OTOMATİK 7/24</span></h1>
+        <p class="subtitle">Cimri &amp; Amazon TR Fiyat Hatası • Al-Sat Arbitraj • Otomatik Telegram Kanalı &amp; X Affiliate Botu</p>
+      </div>
+    </div>
+    <div class="top-actions">
+      <span id="scan-status-badge" class="status-pill">Hazır</span>
+      <button id="btn-scan-now" class="btn btn-primary">⚡ Şimdi Tara</button>
+      <button id="btn-test-ntfy" class="btn btn-accent">📲 ntfy Test</button>
+      <button id="btn-test-tg" class="btn btn-primary">📢 Telegram Kanalına Test At</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="stats-grid">
+      <div class="stat-card">
+        <span class="stat-label">Yakalanan Canlı Fırsat</span>
+        <strong id="stat-total" class="stat-value">0</strong>
+        <span class="stat-sub">Son taramada aktif ürünler</span>
+      </div>
+      <div class="stat-card highlight-green">
+        <span class="stat-label">En Yüksek Tekil Al-Sat Kârı</span>
+        <strong id="stat-max-profit" class="stat-value">0 TL</strong>
+        <span id="stat-max-profit-item" class="stat-sub">Hesaplanıyor...</span>
+      </div>
+      <div class="stat-card highlight-amber">
+        <span class="stat-label">En Yüksek Fiyat Çakılması</span>
+        <strong id="stat-max-discount" class="stat-value">%0</strong>
+        <span class="stat-sub">Mağazalar arası makas / indirim</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">Otomatik Bildirim &amp; Kanal</span>
+        <strong id="stat-ntfy-topic" class="stat-value mono">...</strong>
+        <span id="stat-tg-status" class="stat-sub">Telegram Kanalı: Ayarlanmadı</span>
+      </div>
+    </section>
+
+    <section class="config-panel">
+      <div class="config-header">
+        <h2>⚙️ 1) ntfy.sh Telefon Bildirimi • 2) 7/24 Otomatik Telegram Kanalı • 3) Affiliate Kodların</h2>
+        <span class="config-hint">Kaydettiğin anda bot her 90 saniyede bir yakaladığı fırsatları hem telefonuna (ntfy) hem de Telegram kanalına otomatik atar!</span>
+      </div>
+      <div class="config-grid">
+        <div class="field">
+          <label for="inp-topic">📲 ntfy.sh Topic Kodu (Telefon Bildirimi)</label>
+          <input id="inp-topic" type="text" placeholder="ornek: vurgun-radari-isim" />
+        </div>
+        <div class="field">
+          <label for="inp-tg-token">🤖 Telegram Bot Token (@BotFather'dan)</label>
+          <input id="inp-tg-token" type="password" placeholder="123456789:AAH..." autocomplete="off" />
+        </div>
+        <div class="field">
+          <label for="inp-tg-chat">📢 Telegram Kanal ID (@kanaladi veya -100...)</label>
+          <input id="inp-tg-chat" type="text" placeholder="@fiyatvurgunu" />
+        </div>
+        <div class="field">
+          <label for="inp-aff-tag">🛒 Amazon TR Affiliate Tag (gelirortakligi.amazon.com.tr)</label>
+          <input id="inp-aff-tag" type="text" placeholder="senintagin-21" />
+        </div>
+        <div class="field">
+          <label for="inp-hb-aff">🛍️ Hepsiburada Affiliate / LinkGelir Kodu</label>
+          <input id="inp-hb-aff" type="text" placeholder="Opsiyonel (wt_af kodu)" />
+        </div>
+        <div class="field">
+          <label for="inp-min-disc">📉 Min. İndirim Alarmı (%)</label>
+          <input id="inp-min-disc" type="number" min="5" max="80" value="20" />
+        </div>
+        <div class="field">
+          <label for="inp-min-profit">💸 Min. Al-Sat Kâr Alarmı (TL)</label>
+          <input id="inp-min-profit" type="number" min="50" max="50000" value="350" />
+        </div>
+        <div class="field action-field">
+          <button id="btn-save-settings" class="btn btn-secondary">💾 Tüm Ayarları Kaydet &amp; Aktifleştir</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="tabs-bar">
+      <div class="tabs">
+        <button class="tab-btn active" data-filter="all">🔥 Tüm Vurgunlar (İndirim Sıralı)</button>
+        <button class="tab-btn" data-filter="low_budget">🎯 Hızlı Al-Sat (&lt;10.000 TL Yüksek ROI)</button>
+        <button class="tab-btn" data-filter="arbitrage">💸 Tüm Al-Sat Arbitraj (Kâr Sıralı)</button>
+        <button class="tab-btn" data-filter="amazon">📦 Amazon TR Anlık Fırsatlar</button>
+      </div>
+      <div class="search-box">
+        <input id="inp-search" type="text" placeholder="Ürün, marka veya mağaza filtrele (örn: SSD, Razer, Amazon)..." />
+      </div>
+    </section>
+
+    <section id="deals-grid" class="deals-grid"></section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>
