@@ -731,28 +731,83 @@ def scan_dh_hot_threads() -> List[Dict[str, Any]]:
     return results
 
 
+_POSTED_HISTORY_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "posted_history.json")
 _in_memory_posted_asins: set = set()
+_in_memory_posted_titles: set = set()
+_last_post_epoch: int = 0
+MIN_POST_INTERVAL_SECONDS = 900  # 15 minutes strict anti-spam cooldown between posts
 
 
-def _fetch_already_posted_asins(chat_id: str) -> set:
+def _load_and_sync_channel_history(chat_id: str) -> int:
     """
-    Fetches the public Telegram channel web preview (https://t.me/s/vurgunradari)
-    and extracts all Amazon ASINs already posted so neither local nor GitHub Cloud
-    ever posts the same product twice.
+    Loads posted_history.json and fetches the public Telegram channel web preview
+    (https://t.me/s/vurgunradari) to:
+      1) Extract all ASINs and product title prefixes ever posted.
+      2) Return the epoch timestamp of the latest message on the channel so neither
+         local nor GitHub Cloud ever posts more than 1 deal per 15 minutes.
     """
+    global _last_post_epoch
+    try:
+        if os.path.isfile(_POSTED_HISTORY_PATH):
+            with open(_POSTED_HISTORY_PATH, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                _in_memory_posted_asins.update(data.get("asins") or [])
+                _in_memory_posted_titles.update(data.get("titles") or [])
+    except Exception:
+        pass
+
     slug = re.sub(r"[^a-zA-Z0-9_]", "", (chat_id or "vurgunradari").lstrip("@")) or "vurgunradari"
+    latest_channel_ts = _last_post_epoch
     try:
         html_str = safe_fetch_html(f"https://t.me/s/{slug}", timeout=6)
         if html_str:
-            return set(re.findall(r"/dp/([A-Z0-9]{10})", html_str))
+            for a in re.findall(r"dp/([A-Z0-9]{10})", html_str):
+                _in_memory_posted_asins.add(a)
+            for t in re.findall(r'<div class="tgme_widget_message_text[^>]*><b>([^<]+)</b>', html_str):
+                clean_t = html.unescape(t).strip()[:36].lower()
+                if clean_t:
+                    _in_memory_posted_titles.add(clean_t)
+            times = re.findall(r'datetime="(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})\+00:00"', html_str)
+            if times:
+                import calendar
+                dt_struct = time.strptime(times[-1], "%Y-%m-%dT%H:%M:%S")
+                ts_val = int(calendar.timegm(dt_struct))
+                if ts_val > latest_channel_ts:
+                    latest_channel_ts = ts_val
+                    _last_post_epoch = ts_val
     except Exception:
         pass
-    return set()
+
+    return latest_channel_ts
 
 
-def _dispatch_alerts(candidates_for_alert: List[Dict[str, Any]], settings: Dict[str, str], max_alerts: int = 2) -> int:
+def _save_posted_history() -> None:
+    try:
+        with open(_POSTED_HISTORY_PATH, "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "asins": sorted(_in_memory_posted_asins),
+                    "titles": sorted(_in_memory_posted_titles),
+                },
+                f,
+                ensure_ascii=False,
+                indent=2,
+            )
+    except Exception:
+        pass
+
+
+def _dispatch_alerts(candidates_for_alert: List[Dict[str, Any]], settings: Dict[str, str], max_alerts: int = 1) -> int:
+    global _last_post_epoch
     auto_notify = settings.get("auto_notify", "1") == "1"
     if not auto_notify or not candidates_for_alert:
+        return 0
+
+    latest_ts = _load_and_sync_channel_history(settings.get("telegram_chat_id", "@vurgunradari"))
+    now_ts = int(time.time())
+
+    # Strict anti-spam cooldown: NEVER post if the channel received a post within the last 15 minutes!
+    if latest_ts > 0 and (now_ts - latest_ts) < MIN_POST_INTERVAL_SECONDS:
         return 0
 
     tg_enabled = (
@@ -769,28 +824,29 @@ def _dispatch_alerts(candidates_for_alert: List[Dict[str, Any]], settings: Dict[
         )
     )
 
-    live_channel_asins = _fetch_already_posted_asins(settings.get("telegram_chat_id", "@vurgunradari"))
-    _in_memory_posted_asins.update(live_channel_asins)
-
     notified_count = 0
     for alert_deal in candidates_for_alert:
-        if notified_count >= max_alerts:
+        if notified_count >= 1:
             break
         deal_url = str(alert_deal.get("url") or "")
-        # Strict safeguard: only post commissioned Amazon TR (/dp/) product links to Telegram & X
         m_asin = re.search(r"amazon\.com\.tr/dp/([A-Z0-9]{10})", deal_url)
         if not m_asin:
             continue
         asin = m_asin.group(1)
+        title_key = (alert_deal.get("title") or "").strip()[:36].lower()
 
-        # Deduplication guard: if this ASIN is already on @vurgunradari or sent in this session, mark and skip!
-        if asin in _in_memory_posted_asins:
+        # Deduplication guard: if this ASIN or product title was EVER posted, mark and skip!
+        if asin in _in_memory_posted_asins or (title_key and title_key in _in_memory_posted_titles):
             db.mark_deal_notified(alert_deal["id"])
             continue
 
-        # Lock/mark BEFORE slow network/Chrome calls so no overlapping thread can pick the same deal
+        # Lock/mark BEFORE network/Chrome calls so no overlapping thread can pick the same deal
         _in_memory_posted_asins.add(asin)
+        if title_key:
+            _in_memory_posted_titles.add(title_key)
+        _last_post_epoch = int(time.time())
         db.mark_deal_notified(alert_deal["id"])
+        _save_posted_history()
 
         res = notifier.send_ntfy_alert(alert_deal, settings)
         tg_ok = False
@@ -808,8 +864,8 @@ def _dispatch_alerts(candidates_for_alert: List[Dict[str, Any]], settings: Dict[
 
 def run_sniper_scan(trigger_notifications: bool = True) -> Dict[str, Any]:
     """
-    Ultra-fast 20-second sniper scan: checks Amazon TR live link feed, newest Sıcak Fırsatlar threads,
-    and also dispatches any queued unnotified dashboard deals so nothing sits unshared.
+    Ultra-fast 20-second sniper scan: checks Amazon TR live link feed and newest Sıcak Fırsatlar threads.
+    Only alerts on genuinely new drops and strictly respects the 15-minute anti-spam cooldown.
     """
     settings = db.get_settings()
     discovered: List[Dict[str, Any]] = []
@@ -831,15 +887,6 @@ def run_sniper_scan(trigger_notifications: bool = True) -> Dict[str, Any]:
             if not meta["already_notified"]:
                 candidates.append(d)
 
-    # Also pull unshared deals from the database queue if fewer than 2 fresh alerts triggered
-    if len(candidates) < 2:
-        seen_ids = {c["id"] for c in candidates}
-        queued = db.get_unnotified_deals(min_disc=10.0, min_profit=15.0, limit=2)
-        for q in queued:
-            if q["id"] not in seen_ids:
-                candidates.append(q)
-                seen_ids.add(q["id"])
-
     notified = _dispatch_alerts(candidates, settings, max_alerts=1) if trigger_notifications else 0
     return {
         "mode": "sniper",
@@ -852,8 +899,8 @@ def run_sniper_scan(trigger_notifications: bool = True) -> Dict[str, Any]:
 
 def run_full_scan(trigger_notifications: bool = True) -> Dict[str, Any]:
     settings = db.get_settings()
-    min_disc = float(settings.get("min_discount_pct") or 12.0)
-    min_profit = float(settings.get("min_profit_tl") or 20.0)
+    min_disc = float(settings.get("min_discount_pct") or 15.0)
+    min_profit = float(settings.get("min_profit_tl") or 50.0)
 
     all_discovered: List[Dict[str, Any]] = []
     try:
@@ -891,16 +938,12 @@ def run_full_scan(trigger_notifications: bool = True) -> Dict[str, Any]:
         key=lambda x: (x["discount_pct"], x["estimated_profit_tl"]), reverse=True
     )
 
-    if len(candidates_for_alert) < 2:
-        seen_ids = {c["id"] for c in candidates_for_alert}
-        queued = db.get_unnotified_deals(min_disc=10.0, min_profit=15.0, limit=3)
-        for q in queued:
-            if q["id"] not in seen_ids:
-                candidates_for_alert.append(q)
-                seen_ids.add(q["id"])
+    if not candidates_for_alert:
+        queued = db.get_unnotified_deals(min_disc=15.0, min_profit=50.0, limit=1)
+        candidates_for_alert.extend(queued)
 
     notified_count = (
-        _dispatch_alerts(candidates_for_alert, settings, max_alerts=2)
+        _dispatch_alerts(candidates_for_alert, settings, max_alerts=1)
         if trigger_notifications
         else 0
     )
