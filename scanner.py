@@ -735,7 +735,7 @@ _POSTED_HISTORY_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 
 _in_memory_posted_asins: set = set()
 _in_memory_posted_titles: set = set()
 _last_post_epoch: int = 0
-MIN_POST_INTERVAL_SECONDS = 900  # 15 minutes strict anti-spam cooldown between posts
+MIN_POST_INTERVAL_SECONDS = 420  # 7 minutes steady interval (1 deal every ~7 mins, zero duplicates)
 
 
 def _load_and_sync_channel_history(chat_id: str) -> int:
@@ -744,7 +744,7 @@ def _load_and_sync_channel_history(chat_id: str) -> int:
     (https://t.me/s/vurgunradari) to:
       1) Extract all ASINs and product title prefixes ever posted.
       2) Return the epoch timestamp of the latest message on the channel so neither
-         local nor GitHub Cloud ever posts more than 1 deal per 15 minutes.
+         local nor GitHub Cloud ever posts more than 1 deal per 7 minutes.
     """
     global _last_post_epoch
     try:
@@ -783,16 +783,14 @@ def _load_and_sync_channel_history(chat_id: str) -> int:
 
 def _save_posted_history() -> None:
     try:
+        hist_data = {}
+        if os.path.isfile(_POSTED_HISTORY_PATH):
+            with open(_POSTED_HISTORY_PATH, "r", encoding="utf-8") as f:
+                hist_data = json.load(f)
+        hist_data["asins"] = sorted(_in_memory_posted_asins)
+        hist_data["titles"] = sorted(_in_memory_posted_titles)
         with open(_POSTED_HISTORY_PATH, "w", encoding="utf-8") as f:
-            json.dump(
-                {
-                    "asins": sorted(_in_memory_posted_asins),
-                    "titles": sorted(_in_memory_posted_titles),
-                },
-                f,
-                ensure_ascii=False,
-                indent=2,
-            )
+            json.dump(hist_data, f, ensure_ascii=False, indent=2)
     except Exception:
         pass
 
@@ -806,7 +804,7 @@ def _dispatch_alerts(candidates_for_alert: List[Dict[str, Any]], settings: Dict[
     latest_ts = _load_and_sync_channel_history(settings.get("telegram_chat_id", "@vurgunradari"))
     now_ts = int(time.time())
 
-    # Strict anti-spam cooldown: NEVER post if the channel received a post within the last 15 minutes!
+    # Cooldown: at most 1 deal every 7 minutes
     if latest_ts > 0 and (now_ts - latest_ts) < MIN_POST_INTERVAL_SECONDS:
         return 0
 
@@ -865,7 +863,7 @@ def _dispatch_alerts(candidates_for_alert: List[Dict[str, Any]], settings: Dict[
 def run_sniper_scan(trigger_notifications: bool = True) -> Dict[str, Any]:
     """
     Ultra-fast 20-second sniper scan: checks Amazon TR live link feed and newest Sıcak Fırsatlar threads.
-    Only alerts on genuinely new drops and strictly respects the 15-minute anti-spam cooldown.
+    If the 7-minute cooldown has elapsed and no brand-new drop arrived, dispatches 1 unshared deal from the queue.
     """
     settings = db.get_settings()
     discovered: List[Dict[str, Any]] = []
@@ -887,6 +885,9 @@ def run_sniper_scan(trigger_notifications: bool = True) -> Dict[str, Any]:
             if not meta["already_notified"]:
                 candidates.append(d)
 
+    if not candidates:
+        candidates.extend(db.get_unnotified_deals(min_disc=10.0, min_profit=15.0, limit=5))
+
     notified = _dispatch_alerts(candidates, settings, max_alerts=1) if trigger_notifications else 0
     return {
         "mode": "sniper",
@@ -899,8 +900,8 @@ def run_sniper_scan(trigger_notifications: bool = True) -> Dict[str, Any]:
 
 def run_full_scan(trigger_notifications: bool = True) -> Dict[str, Any]:
     settings = db.get_settings()
-    min_disc = float(settings.get("min_discount_pct") or 15.0)
-    min_profit = float(settings.get("min_profit_tl") or 50.0)
+    min_disc = float(settings.get("min_discount_pct") or 12.0)
+    min_profit = float(settings.get("min_profit_tl") or 20.0)
 
     all_discovered: List[Dict[str, Any]] = []
     try:
@@ -939,7 +940,7 @@ def run_full_scan(trigger_notifications: bool = True) -> Dict[str, Any]:
     )
 
     if not candidates_for_alert:
-        queued = db.get_unnotified_deals(min_disc=15.0, min_profit=50.0, limit=1)
+        queued = db.get_unnotified_deals(min_disc=10.0, min_profit=15.0, limit=5)
         candidates_for_alert.extend(queued)
 
     notified_count = (
