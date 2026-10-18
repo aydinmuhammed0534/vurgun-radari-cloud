@@ -721,21 +721,14 @@ def send_daily_top3_digest(deals: list, settings: Dict[str, str]) -> Dict[str, A
         except Exception:
             pass
 
-    # 2. X Digest Tweet
-    d1 = top3[0]
-    u1 = build_affiliate_url(d1["url"], amazon_tag)
-    x_lines = [
-        "Günün öne çıkan dip fiyatlı ürünleri (Stokta aktif):",
-        "",
-    ]
+    # 2. X Digest Tweet (<230 chars so it always fits within 280 limit)
+    x_lines = ["Günün öne çıkan 3 fiyat farkı (Amazon TR):"]
     for idx, d in enumerate(top3, 1):
-        t_short = (d.get("title") or "")[:34].rstrip()
+        t_short = (d.get("title") or "")[:24].rstrip()
         p = format_tl(float(d.get("cheapest_price") or 0))
         disc = float(d.get("discount_pct") or 0)
-        x_lines.append(f"{idx}) {t_short}... — {p} (%{disc:.0f} fark)")
-    x_lines.append("")
-    x_lines.append(f"1. Ürün: {u1}")
-    x_lines.append("Tüm linkler: https://t.me/vurgunradari #indirim #işbirliği")
+        x_lines.append(f"{idx}) {t_short}.. {p} (-%{disc:.0f})")
+    x_lines.append("Linkler: https://t.me/vurgunradari #indirim #işbirliği")
     x_text = "\n".join(x_lines)
 
     auth_token = (settings.get("x_auth_token") or os.environ.get("X_AUTH_TOKEN") or "").strip()
