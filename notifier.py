@@ -743,26 +743,32 @@ _X_SNIPER_TARGETS = [
     (
         '"kulaklık önerisi" OR "bluetooth kulaklık" OR "kulaklık lazım" -filter:replies lang:tr',
         ("kulaklık", "airpods", "sennheiser", "anker", "jbl", "sony", "tuf h1", "lp80"),
+        "Kulaklık",
     ),
     (
         '"mouse önerisi" OR "oyuncu mouse" OR "kablosuz mouse" -filter:replies lang:tr',
         ("mouse", "logitech", "razer", "rampage", "steelseries"),
+        "Mouse",
     ),
     (
         '"monitör önerisi" OR "gaming monitör" -filter:replies lang:tr',
         ("monitör", "monitor", "ips", "oled", "ultragear", "tuf gaming vg"),
+        "Monitör",
     ),
     (
         '"güneş kremi" OR "nemlendirici" OR "cerave" OR "la roche" -filter:replies lang:tr',
-        ("cilt", "dermokozmetik", "cerave", "la roche", "bioderma", "krem", "serum", "kozmetik"),
+        ("cerave", "la roche", "bioderma", "vichy", "yüz", "cilt", "güneş", "serum", "nemlendirici"),
+        "Dermokozmetik",
     ),
     (
         '"kahve makinesi" OR "espresso" OR "termos" OR "airfryer" -filter:replies lang:tr',
         ("kahve", "espresso", "termos", "stanley", "philips", "mutfak"),
+        "Mutfak",
     ),
     (
         '"laptop önerisi" OR "bilgisayar önerisi" -filter:replies lang:tr',
         ("laptop", "dizüstü", "ryzen", "rtx", "ideapad", "zenbook", "cyborg", "omen"),
+        "Laptop",
     ),
 ]
 
@@ -770,18 +776,21 @@ _SNIPER_HISTORY_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 
 SNIPER_REPLY_COOLDOWN_SECONDS = 1500  # 25 minutes anti-ban cooldown between Sniper Replies
 
 
-def _pick_matching_deal_for_sniper(deals: list, keywords: tuple) -> Dict[str, Any]:
-    best = []
+def _pick_matching_deal_for_sniper(deals: list, keywords: tuple, preferred_cat: str = "") -> Dict[str, Any]:
+    cat_matches = []
+    kw_matches = []
     for d in deals:
         if "amazon.com.tr/dp/" not in str(d.get("url") or ""):
             continue
-        hay = ((d.get("title") or "") + " " + (d.get("category") or "")).lower()
-        if any(k in hay for k in keywords):
-            best.append(d)
-    if not best:
-        best = [d for d in deals if "amazon.com.tr/dp/" in str(d.get("url") or "")]
-    best.sort(key=lambda x: float(x.get("discount_pct") or 0), reverse=True)
-    return best[0] if best else {}
+        cat_str = (d.get("category") or "").lower()
+        title_str = (d.get("title") or "").lower()
+        if preferred_cat and preferred_cat.lower() in cat_str:
+            cat_matches.append(d)
+        elif any(k in title_str for k in keywords):
+            kw_matches.append(d)
+    pool = cat_matches or kw_matches or [d for d in deals if "amazon.com.tr/dp/" in str(d.get("url") or "")]
+    pool.sort(key=lambda x: float(x.get("discount_pct") or 0), reverse=True)
+    return pool[0] if pool else {}
 
 
 def _build_sniper_reply_text(deal: Dict[str, Any]) -> str:
@@ -851,8 +860,8 @@ def engage_targeted_x_shoppers(
     can_reply = force_reply or ((now_ts - last_reply_ts) >= SNIPER_REPLY_COOLDOWN_SECONDS)
 
     idx = int(now_ts // 90) % len(_X_SNIPER_TARGETS)
-    query, cat_keywords = _X_SNIPER_TARGETS[idx]
-    matched_deal = _pick_matching_deal_for_sniper(deals or [], cat_keywords) if deals else {}
+    query, cat_keywords, preferred_cat = _X_SNIPER_TARGETS[idx]
+    matched_deal = _pick_matching_deal_for_sniper(deals or [], cat_keywords, preferred_cat) if deals else {}
     search_url = "https://x.com/search?q=" + urllib.parse.quote(query) + "&src=typed_query&f=live"
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s_port:
