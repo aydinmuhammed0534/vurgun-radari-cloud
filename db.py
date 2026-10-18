@@ -145,7 +145,7 @@ def update_settings(new_settings: Dict[str, Any]) -> Dict[str, str]:
 def upsert_deal(deal: Dict[str, Any]) -> Dict[str, Any]:
     """
     Inserts or updates a deal using parameterized SQL queries.
-    Returns metadata indicating if this deal is newly discovered or dropped further in price.
+    Deduplicates by both id and url so the same product from multiple sources never duplicates.
     """
     now = int(time.time())
     with _db_lock:
@@ -153,8 +153,8 @@ def upsert_deal(deal: Dict[str, Any]) -> Dict[str, Any]:
         try:
             cur = conn.cursor()
             cur.execute(
-                "SELECT cheapest_price, notified FROM deals WHERE id = ?",
-                (deal["id"],),
+                "SELECT id, cheapest_price, notified FROM deals WHERE id = ? OR url = ? ORDER BY notified DESC LIMIT 1",
+                (deal["id"], deal["url"]),
             )
             existing = cur.fetchone()
 
@@ -163,9 +163,10 @@ def upsert_deal(deal: Dict[str, Any]) -> Dict[str, Any]:
             already_notified = False
 
             if existing is not None:
+                deal["id"] = str(existing["id"])
                 old_price = float(existing["cheapest_price"])
                 already_notified = bool(existing["notified"])
-                if deal["cheapest_price"] < old_price * 0.97:
+                if deal["cheapest_price"] < old_price * 0.92:
                     price_dropped_more = True
                     already_notified = False
 
@@ -243,7 +244,15 @@ def mark_deal_notified(deal_id: str) -> None:
         conn = get_connection()
         try:
             cur = conn.cursor()
-            cur.execute("UPDATE deals SET notified = 1 WHERE id = ?", (deal_id,))
+            cur.execute(
+                """
+                UPDATE deals
+                SET notified = 1
+                WHERE id = ?
+                   OR url IN (SELECT url FROM deals WHERE id = ?)
+                """,
+                (deal_id, deal_id),
+            )
             conn.commit()
         finally:
             conn.close()

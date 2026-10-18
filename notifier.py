@@ -119,6 +119,27 @@ def build_telegram_share_text(
     return "\n".join(lines)
 
 
+def _pick_x_search_tag(deal: Dict[str, Any]) -> str:
+    cat = (deal.get("category") or "").lower()
+    title = (deal.get("title") or "").lower()
+    hay = f"{cat} {title}"
+    if any(k in hay for k in ("cilt", "dermokozmetik", "cerave", "la roche", "bioderma", "vichy", "serum", "krem", "güneş")):
+        return "#ciltbakımı #indirim"
+    if any(k in hay for k in ("makyaj", "kozmetik", "maybelline", "loreal", "l'oréal", "maskara", "ruj", "fondöten")):
+        return "#kozmetik #indirim"
+    if any(k in hay for k in ("parfüm", "deodorant", "edt", "edp")):
+        return "#parfüm #fırsat"
+    if any(k in hay for k in ("şampuan", "saç", "epilasyon", "lumea", "braun", "oral-b", "philips")):
+        return "#kişiselbakım #indirim"
+    if any(k in hay for k in ("kahve", "market", "gıda", "temizlik", "deterjan", "finish", "fairy", "persil")):
+        return "#market #amazonfırsatları"
+    if any(k in hay for k in ("mutfak", "termos", "stanley", "airfryer", "tefal", "tencere")):
+        return "#mutfak #fırsat"
+    if any(k in hay for k in ("mouse", "kulaklık", "monitör", "ssd", "laptop", "gaming", "oyuncu", "asus", "razer", "logitech")):
+        return "#teknoloji #indirim"
+    return "#indirim #fırsat"
+
+
 def build_x_tweet_text(
     deal: Dict[str, Any],
     amazon_tag: str = "vurgunradari-21",
@@ -132,11 +153,12 @@ def build_x_tweet_text(
         merchant=deal.get("cheapest_merchant", ""),
     )
     raw_title = (deal.get("title") or "Fırsat Ürünü").strip()
-    short_title = raw_title[:62].rstrip() + ("..." if len(raw_title) > 62 else "")
+    short_title = raw_title[:60].rstrip() + ("..." if len(raw_title) > 60 else "")
     price = float(deal.get("cheapest_price", 0))
     second_price = float(deal.get("second_price", 0))
     disc = float(deal.get("discount_pct", 0))
     merchant = (deal.get("cheapest_merchant") or "Mağaza")[:15]
+    search_tag = _pick_x_search_tag(deal)
 
     # Deterministic variation per product so consecutive tweets look organically written by a human analyst
     variant = sum(ord(c) for c in raw_title) % 3
@@ -150,7 +172,7 @@ def build_x_tweet_text(
                 f"{merchant}: {format_tl(price)} (%{disc:.0f} avantaj)",
                 "",
                 f"{aff_url}",
-                "Anlık radar: https://t.me/vurgunradari #işbirliği",
+                f"Anlık bildirim: https://t.me/vurgunradari {search_tag} #işbirliği",
             ]
         elif variant == 1:
             lines = [
@@ -159,7 +181,7 @@ def build_x_tweet_text(
                 f"Diğer mağazalarda {format_tl(second_price)} bandında; şu an {merchant} üzerinde {format_tl(price)}.",
                 "",
                 f"Link: {aff_url}",
-                "t.me/vurgunradari #işbirliği",
+                f"Kanal: https://t.me/vurgunradari {search_tag} #işbirliği",
             ]
         else:
             lines = [
@@ -169,7 +191,7 @@ def build_x_tweet_text(
                 f"• En yakın rakip: {format_tl(second_price)}",
                 "",
                 f"{aff_url}",
-                "Kanal: https://t.me/vurgunradari #işbirliği",
+                f"Anlık radar: https://t.me/vurgunradari {search_tag} #işbirliği",
             ]
     else:
         lines = [
@@ -178,7 +200,7 @@ def build_x_tweet_text(
             f"{merchant}: {format_tl(price)}" if price > 0 else "Anlık fiyat fırsatı",
             "",
             f"{aff_url}",
-            "Anlık radar: https://t.me/vurgunradari #işbirliği",
+            f"Anlık radar: https://t.me/vurgunradari {search_tag} #işbirliği",
         ]
 
     return "\n".join(lines)
@@ -542,7 +564,12 @@ def send_telegram_channel_post(
     if aff_url.startswith("https://"):
         btn_label = f"Ürüne Git — {format_tl(price)}" if price > 0 else "Ürünü İncele"
         payload["reply_markup"] = {
-            "inline_keyboard": [[{"text": btn_label, "url": aff_url}]]
+            "inline_keyboard": [
+                [
+                    {"text": btn_label, "url": aff_url},
+                    {"text": "𝕏 @vurgunradari", "url": "https://x.com/vurgunradari"},
+                ]
+            ]
         }
 
     api_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
@@ -565,6 +592,158 @@ def send_telegram_channel_post(
         return {"ok": False, "error": f"Telegram API Hatası ({he.code}): {err_body[:180]}"}
     except Exception as exc:
         return {"ok": False, "error": str(exc)}
+
+
+def send_and_pin_telegram_welcome(settings: Dict[str, str]) -> Dict[str, Any]:
+    """
+    Sets the Telegram channel SEO description and sends + pins a high-conversion welcome guide.
+    """
+    bot_token = (settings.get("telegram_bot_token") or "").strip()
+    chat_id = (settings.get("telegram_chat_id") or "").strip()
+    if not bot_token or not chat_id:
+        return {"ok": False, "error": "Telegram ayarları eksik."}
+
+    # 1. Update Telegram Channel Description for Telegram Global Search SEO
+    seo_desc = (
+        "Amazon Türkiye anlık fiyat hatası, dip fiyat, dermokozmetik, elektronik, kişisel bakım "
+        "ve market indirim radarı. Tüm ürünler canlı stok ve piyasa karşılaştırmalıdır. "
+        "X: https://x.com/vurgunradari"
+    )
+    try:
+        desc_req = urllib.request.Request(
+            f"https://api.telegram.org/bot{bot_token}/setChatDescription",
+            data=json.dumps({"chat_id": chat_id, "description": seo_desc}, ensure_ascii=False).encode("utf-8"),
+            headers={"Content-Type": "application/json; charset=utf-8"},
+            method="POST",
+        )
+        urllib.request.urlopen(desc_req, timeout=8).read()
+    except Exception:
+        pass
+
+    # 2. Send Welcome Message
+    welcome_html = "\n".join(
+        [
+            "<b>VURGUN RADARI — 7/24 Otomatik Fiyat &amp; Stok Takip Sistemi</b>",
+            "",
+            "Bu kanalda paylaşılan tüm ürünler sistem tarafından 7/24 taranır ve paylaşım anında:",
+            "• <b>Canlı stok kontrolünden</b> geçirilir (stokta olmayan ürün atılmaz).",
+            "• <b>Diğer pazaryerlerindeki en yakın rakip fiyatla</b> karşılaştırılır.",
+            "• <b>Kategoriler:</b> Elektronik, Dermokozmetik &amp; Cilt Bakımı, Parfüm, Kişisel Bakım, Ev &amp; Mutfak, Süpermarket.",
+            "",
+            "Dip fiyatlı ve hatalı etiketli ürünlerin stoğu dakikalar içinde bittiği için <b>kanal bildirimlerini (🔔 Sessizden Çıkar)</b> açık tutmanız önerilir.",
+            "",
+            "𝕏 <b>Twitter / X Hesabımız:</b> <a href=\"https://x.com/vurgunradari\">x.com/vurgunradari</a>",
+            "📢 <b>Kanal Davet Linki:</b> <a href=\"https://t.me/vurgunradari\">t.me/vurgunradari</a>",
+        ]
+    )
+    msg_payload = {
+        "chat_id": chat_id,
+        "text": welcome_html,
+        "parse_mode": "HTML",
+        "disable_web_page_preview": True,
+        "reply_markup": {
+            "inline_keyboard": [
+                [
+                    {"text": "𝕏 Twitter'da Takip Et", "url": "https://x.com/vurgunradari"},
+                    {"text": "📢 Kanalı Paylaş", "url": "https://t.me/share/url?url=https://t.me/vurgunradari&text=Amazon%20TR%20anl%C4%B1k%20fiyat%20ve%20indirim%20radar%C4%B1"},
+                ]
+            ]
+        },
+    }
+    try:
+        req = urllib.request.Request(
+            f"https://api.telegram.org/bot{bot_token}/sendMessage",
+            data=json.dumps(msg_payload, ensure_ascii=False).encode("utf-8"),
+            headers={"Content-Type": "application/json; charset=utf-8"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            resp_body = json.loads(resp.read().decode("utf-8", errors="ignore"))
+        msg_id = ((resp_body.get("result") or {}).get("message_id"))
+        if msg_id:
+            pin_req = urllib.request.Request(
+                f"https://api.telegram.org/bot{bot_token}/pinChatMessage",
+                data=json.dumps({"chat_id": chat_id, "message_id": msg_id, "disable_notification": False}).encode("utf-8"),
+                headers={"Content-Type": "application/json; charset=utf-8"},
+                method="POST",
+            )
+            urllib.request.urlopen(pin_req, timeout=8).read()
+        return {"ok": True, "message_id": msg_id}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+def send_daily_top3_digest(deals: list, settings: Dict[str, str]) -> Dict[str, Any]:
+    """
+    Publishes a high-bookmark 'Günün En Yüksek 3 Fiyat Farkı Özeti' list post to both Telegram & X.
+    """
+    amazon_tag = settings.get("amazon_affiliate_tag", "vurgunradari-21")
+    top3 = [d for d in deals if "amazon.com.tr/dp/" in str(d.get("url") or "")][:3]
+    if len(top3) < 3:
+        return {"ok": False, "error": "Özet için yeterli ürün yok."}
+
+    # 1. Telegram Digest HTML
+    tg_lines = ["<b>GÜNÜN ÖNE ÇIKAN 3 FİYAT FARKI (STOKTA AKTİF)</b>", ""]
+    for idx, d in enumerate(top3, 1):
+        u = build_affiliate_url(d["url"], amazon_tag)
+        t = html.escape((d.get("title") or "")[:65].rstrip())
+        p = format_tl(float(d.get("cheapest_price") or 0))
+        sp = format_tl(float(d.get("second_price") or 0))
+        disc = float(d.get("discount_pct") or 0)
+        tg_lines.append(f"{idx}) <b>{t}</b>")
+        tg_lines.append(f"   • Amazon TR: <b>{p}</b>  (Piyasa: <s>{sp}</s> — %{disc:.0f} avantaj)")
+        tg_lines.append(f"   • <a href=\"{html.escape(u)}\">Ürünü İncele →</a>")
+        tg_lines.append("")
+    tg_lines.append("𝕏 Anlık akış: <a href=\"https://x.com/vurgunradari\">x.com/vurgunradari</a>  <i>#işbirliği</i>")
+
+    bot_token = (settings.get("telegram_bot_token") or "").strip()
+    chat_id = (settings.get("telegram_chat_id") or "").strip()
+    tg_ok = False
+    if bot_token and chat_id:
+        try:
+            req = urllib.request.Request(
+                f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                data=json.dumps(
+                    {
+                        "chat_id": chat_id,
+                        "text": "\n".join(tg_lines),
+                        "parse_mode": "HTML",
+                        "disable_web_page_preview": True,
+                    },
+                    ensure_ascii=False,
+                ).encode("utf-8"),
+                headers={"Content-Type": "application/json; charset=utf-8"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                rb = json.loads(resp.read().decode("utf-8", errors="ignore"))
+                tg_ok = bool(rb.get("ok"))
+        except Exception:
+            pass
+
+    # 2. X Digest Tweet
+    d1 = top3[0]
+    u1 = build_affiliate_url(d1["url"], amazon_tag)
+    x_lines = [
+        "Günün öne çıkan dip fiyatlı ürünleri (Stokta aktif):",
+        "",
+    ]
+    for idx, d in enumerate(top3, 1):
+        t_short = (d.get("title") or "")[:34].rstrip()
+        p = format_tl(float(d.get("cheapest_price") or 0))
+        disc = float(d.get("discount_pct") or 0)
+        x_lines.append(f"{idx}) {t_short}... — {p} (%{disc:.0f} fark)")
+    x_lines.append("")
+    x_lines.append(f"1. Ürün: {u1}")
+    x_lines.append("Tüm linkler: https://t.me/vurgunradari #indirim #işbirliği")
+    x_text = "\n".join(x_lines)
+
+    auth_token = (settings.get("x_auth_token") or os.environ.get("X_AUTH_TOKEN") or "").strip()
+    x_res = {"ok": False}
+    if auth_token and not auth_token.startswith("***"):
+        x_res = _post_tweet_via_headless_chrome(x_text, auth_token)
+
+    return {"ok": tg_ok or bool(x_res.get("ok")), "tg_ok": tg_ok, "x_res": x_res}
 
 
 def send_ntfy_alert(

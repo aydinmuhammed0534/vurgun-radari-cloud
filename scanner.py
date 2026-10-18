@@ -15,6 +15,7 @@ ALLOWED_URL_PREFIXES = (
     "https://www.cimri.com/",
     "https://forum.donanimhaber.com/",
     "https://www.amazon.com.tr/",
+    "https://t.me/s/",
 )
 
 CIMRI_CATEGORIES = [
@@ -730,7 +731,26 @@ def scan_dh_hot_threads() -> List[Dict[str, Any]]:
     return results
 
 
-def _dispatch_alerts(candidates_for_alert: List[Dict[str, Any]], settings: Dict[str, str], max_alerts: int = 3) -> int:
+_in_memory_posted_asins: set = set()
+
+
+def _fetch_already_posted_asins(chat_id: str) -> set:
+    """
+    Fetches the public Telegram channel web preview (https://t.me/s/vurgunradari)
+    and extracts all Amazon ASINs already posted so neither local nor GitHub Cloud
+    ever posts the same product twice.
+    """
+    slug = re.sub(r"[^a-zA-Z0-9_]", "", (chat_id or "vurgunradari").lstrip("@")) or "vurgunradari"
+    try:
+        html_str = safe_fetch_html(f"https://t.me/s/{slug}", timeout=6)
+        if html_str:
+            return set(re.findall(r"/dp/([A-Z0-9]{10})", html_str))
+    except Exception:
+        pass
+    return set()
+
+
+def _dispatch_alerts(candidates_for_alert: List[Dict[str, Any]], settings: Dict[str, str], max_alerts: int = 2) -> int:
     auto_notify = settings.get("auto_notify", "1") == "1"
     if not auto_notify or not candidates_for_alert:
         return 0
@@ -749,12 +769,29 @@ def _dispatch_alerts(candidates_for_alert: List[Dict[str, Any]], settings: Dict[
         )
     )
 
+    live_channel_asins = _fetch_already_posted_asins(settings.get("telegram_chat_id", "@vurgunradari"))
+    _in_memory_posted_asins.update(live_channel_asins)
+
     notified_count = 0
-    for alert_deal in candidates_for_alert[:max_alerts]:
+    for alert_deal in candidates_for_alert:
+        if notified_count >= max_alerts:
+            break
         deal_url = str(alert_deal.get("url") or "")
         # Strict safeguard: only post commissioned Amazon TR (/dp/) product links to Telegram & X
-        if "amazon.com.tr/dp/" not in deal_url:
+        m_asin = re.search(r"amazon\.com\.tr/dp/([A-Z0-9]{10})", deal_url)
+        if not m_asin:
             continue
+        asin = m_asin.group(1)
+
+        # Deduplication guard: if this ASIN is already on @vurgunradari or sent in this session, mark and skip!
+        if asin in _in_memory_posted_asins:
+            db.mark_deal_notified(alert_deal["id"])
+            continue
+
+        # Lock/mark BEFORE slow network/Chrome calls so no overlapping thread can pick the same deal
+        _in_memory_posted_asins.add(asin)
+        db.mark_deal_notified(alert_deal["id"])
+
         res = notifier.send_ntfy_alert(alert_deal, settings)
         tg_ok = False
         if tg_enabled:
@@ -765,7 +802,6 @@ def _dispatch_alerts(candidates_for_alert: List[Dict[str, Any]], settings: Dict[
             x_res = notifier.send_x_auto_tweet(alert_deal, settings)
             x_ok = bool(x_res.get("ok"))
         if res.get("ok") or tg_ok or x_ok:
-            db.mark_deal_notified(alert_deal["id"])
             notified_count += 1
     return notified_count
 
