@@ -3,8 +3,14 @@ import hashlib
 import hmac
 import html
 import json
+import os
 import re
 import secrets
+import shutil
+import socket
+import struct
+import subprocess
+import tempfile
 import time
 import urllib.parse
 import urllib.request
@@ -226,21 +232,215 @@ def _oauth1_authorization_header(
     return f"OAuth {header_parts}"
 
 
+def _cdp_send(sock: socket.socket, msg_id: int, method: str, params: Dict[str, Any] = None) -> Dict[str, Any]:
+    payload = json.dumps({"id": msg_id, "method": method, "params": params or {}}).encode("utf-8")
+    header = bytearray([0x81])
+    length = len(payload)
+    if length < 126:
+        header.append(0x80 | length)
+    elif length < 65536:
+        header.append(0x80 | 126)
+        header.extend(struct.pack("!H", length))
+    else:
+        header.append(0x80 | 127)
+        header.extend(struct.pack("!Q", length))
+    mask = os.urandom(4)
+    header.extend(mask)
+    masked = bytearray(payload[i] ^ mask[i % 4] for i in range(length))
+    sock.sendall(header + masked)
+    while True:
+        b1, b2 = sock.recv(2)
+        ln = b2 & 0x7F
+        if ln == 126:
+            ln = struct.unpack("!H", sock.recv(2))[0]
+        elif ln == 127:
+            ln = struct.unpack("!Q", sock.recv(8))[0]
+        data = b""
+        while len(data) < ln:
+            data += sock.recv(ln - len(data))
+        res = json.loads(data.decode("utf-8", errors="ignore"))
+        if res.get("id") == msg_id:
+            return res
+
+
+def _post_tweet_via_headless_chrome(tweet_text: str, auth_token: str) -> Dict[str, Any]:
+    """
+    Posts a tweet 100% free using the user's X web session (auth_token) via Headless Chrome CDP.
+    Works on both macOS locally and Ubuntu on GitHub Actions.
+    """
+    clean_auth = re.sub(r"[^a-fA-F0-9]", "", auth_token.strip())
+    if len(clean_auth) < 30:
+        return {"ok": False, "error": "Geçersiz X auth_token."}
+
+    chrome_candidates = [
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        "/usr/bin/google-chrome",
+        "/usr/bin/google-chrome-stable",
+        "/usr/bin/chromium-browser",
+        "/usr/bin/chromium",
+    ]
+    chrome_bin = next((c for c in chrome_candidates if os.path.isfile(c)), "")
+    if not chrome_bin:
+        return {"ok": False, "error": "Google Chrome bulunamadı."}
+
+    # Fetch fresh ct0 CSRF cookie via curl
+    ct0 = ""
+    try:
+        p = subprocess.run(
+            [
+                "/usr/bin/curl",
+                "-s",
+                "-i",
+                "-L",
+                "--max-time",
+                "8",
+                "-H",
+                f"Cookie: auth_token={clean_auth}",
+                "-A",
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+                "https://x.com/home",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        ct0_matches = re.findall(r"set-cookie:\s*ct0=([a-fA-F0-9]+);", p.stdout, re.I)
+        if ct0_matches:
+            ct0 = ct0_matches[-1]
+    except Exception:
+        pass
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s_port:
+        s_port.bind(("127.0.0.1", 0))
+        port = s_port.getsockname()[1]
+
+    profile_dir = tempfile.mkdtemp(prefix="vurgun_x_")
+    proc = None
+    sock = None
+    try:
+        proc = subprocess.Popen(
+            [
+                chrome_bin,
+                "--headless=new",
+                "--disable-gpu",
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+                f"--remote-debugging-port={port}",
+                f"--user-data-dir={profile_dir}",
+                "about:blank",
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        time.sleep(2.0)
+        tabs = json.loads(urllib.request.urlopen(f"http://127.0.0.1:{port}/json", timeout=5).read().decode("utf-8"))
+        ws_url = [t["webSocketDebuggerUrl"] for t in tabs if t.get("type") == "page"][0]
+        ws_path = "/" + ws_url.split("/", 3)[3]
+
+        sock = socket.create_connection(("127.0.0.1", port), timeout=18)
+        ws_key = base64.b64encode(os.urandom(16)).decode("utf-8")
+        handshake = (
+            f"GET {ws_path} HTTP/1.1\r\n"
+            f"Host: 127.0.0.1:{port}\r\n"
+            "Upgrade: websocket\r\n"
+            "Connection: Upgrade\r\n"
+            f"Sec-WebSocket-Key: {ws_key}\r\n"
+            "Sec-WebSocket-Version: 13\r\n\r\n"
+        )
+        sock.sendall(handshake.encode("utf-8"))
+        sock.recv(4096)
+
+        _cdp_send(sock, 1, "Network.enable")
+        _cdp_send(
+            sock,
+            2,
+            "Network.setCookie",
+            {
+                "name": "auth_token",
+                "value": clean_auth,
+                "domain": ".x.com",
+                "path": "/",
+                "secure": True,
+                "httpOnly": True,
+            },
+        )
+        if ct0:
+            _cdp_send(
+                sock,
+                3,
+                "Network.setCookie",
+                {
+                    "name": "ct0",
+                    "value": ct0,
+                    "domain": ".x.com",
+                    "path": "/",
+                    "secure": True,
+                },
+            )
+
+        intent_url = "https://x.com/intent/post?text=" + urllib.parse.quote(tweet_text)
+        _cdp_send(sock, 4, "Page.navigate", {"url": intent_url})
+        time.sleep(6.0)
+
+        js_code = """
+        (async () => {
+            const btn = document.querySelector("[data-testid=\\"tweetButton\\"]");
+            if (!btn) return "no_btn:" + location.href;
+            btn.click();
+            await new Promise(r => setTimeout(r, 3200));
+            return "sent:" + location.href;
+        })()
+        """
+        eval_res = _cdp_send(
+            sock,
+            5,
+            "Runtime.evaluate",
+            {"expression": js_code, "awaitPromise": True, "returnByValue": True},
+        )
+        val = str(((eval_res.get("result") or {}).get("result") or {}).get("value") or "")
+        if val.startswith("sent:"):
+            return {"ok": True, "mode": "web_session", "status": val}
+        return {"ok": False, "error": f"X Web oturumu yanıtı: {val}"}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+    finally:
+        if sock:
+            try:
+                sock.close()
+            except Exception:
+                pass
+        if proc:
+            try:
+                proc.terminate()
+                proc.wait(timeout=3)
+            except Exception:
+                pass
+        shutil.rmtree(profile_dir, ignore_errors=True)
+
+
 def send_x_auto_tweet(deal: Dict[str, Any], settings: Dict[str, str]) -> Dict[str, Any]:
     """
-    Automatically posts a tweet to X (Twitter) using Free Tier API v2 (POST /2/tweets) with OAuth 1.0a.
+    Automatically posts a tweet to X (Twitter).
+    Prioritizes 100% free X Web Session (x_auth_token via Headless Chrome CDP),
+    with fallback to X API v2 OAuth 1.0a if configured with credits.
     """
+    amazon_tag = settings.get("amazon_affiliate_tag", "vurgunradari-21")
+    hb_aff_id = settings.get("hepsiburada_aff_id", "")
+    tweet_text = build_x_tweet_text(deal, amazon_tag, hb_aff_id)
+
+    auth_token = (settings.get("x_auth_token") or os.environ.get("X_AUTH_TOKEN") or "").strip()
+    if auth_token and not auth_token.startswith("***"):
+        web_res = _post_tweet_via_headless_chrome(tweet_text, auth_token)
+        if web_res.get("ok"):
+            return web_res
+
     api_key = (settings.get("x_api_key") or "").strip()
     api_secret = (settings.get("x_api_secret") or "").strip()
     access_token = (settings.get("x_access_token") or "").strip()
     access_secret = (settings.get("x_access_secret") or "").strip()
 
     if not (api_key and api_secret and access_token and access_secret):
-        return {"ok": False, "error": "X API anahtarları henüz girilmemiş."}
-
-    amazon_tag = settings.get("amazon_affiliate_tag", "vurgunradari-21")
-    hb_aff_id = settings.get("hepsiburada_aff_id", "")
-    tweet_text = build_x_tweet_text(deal, amazon_tag, hb_aff_id)
+        return {"ok": False, "error": "X oturumu (auth_token) veya API anahtarları henüz girilmemiş."}
 
     url = "https://api.twitter.com/2/tweets"
     auth_header = _oauth1_authorization_header(

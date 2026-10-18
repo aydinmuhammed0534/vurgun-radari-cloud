@@ -29,6 +29,7 @@ def _sync_github_secrets_background(settings: Dict[str, str]) -> None:
     mapping = {
         "NTFY_TOPIC": settings.get("ntfy_topic", ""),
         "TELEGRAM_BOT_TOKEN": settings.get("telegram_bot_token", ""),
+        "X_AUTH_TOKEN": settings.get("x_auth_token", ""),
         "X_API_KEY": settings.get("x_api_key", ""),
         "X_API_SECRET": settings.get("x_api_secret", ""),
         "X_ACCESS_TOKEN": settings.get("x_access_token", ""),
@@ -63,15 +64,17 @@ def sanitize_settings_for_client(raw_settings: Dict[str, str]) -> Dict[str, str]
     safe["telegram_bot_token"] = mask_token(tok) if tok else ""
     safe["telegram_configured"] = "1" if (tok and safe.get("telegram_chat_id")) else "0"
 
+    x_auth = safe.get("x_auth_token", "")
     x_key = safe.get("x_api_key", "")
     x_sec = safe.get("x_api_secret", "")
     x_atok = safe.get("x_access_token", "")
     x_asec = safe.get("x_access_secret", "")
+    safe["x_auth_token"] = mask_token(x_auth) if x_auth else ""
     safe["x_api_key"] = mask_token(x_key) if x_key else ""
     safe["x_api_secret"] = mask_token(x_sec) if x_sec else ""
     safe["x_access_token"] = mask_token(x_atok) if x_atok else ""
     safe["x_access_secret"] = mask_token(x_asec) if x_asec else ""
-    safe["x_configured"] = "1" if (x_key and x_sec and x_atok and x_asec) else "0"
+    safe["x_configured"] = "1" if (x_auth or (x_key and x_sec and x_atok and x_asec)) else "0"
     return safe
 
 
@@ -239,6 +242,7 @@ class RadarRequestHandler(BaseHTTPRequestHandler):
             if isinstance(body, dict):
                 for secret_field in (
                     "telegram_bot_token",
+                    "x_auth_token",
                     "x_api_key",
                     "x_api_secret",
                     "x_access_token",

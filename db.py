@@ -79,6 +79,7 @@ def init_db() -> None:
                 "x_api_secret": "",
                 "x_access_token": "",
                 "x_access_secret": "",
+                "x_auth_token": "",
                 "x_auto_post": "1",
                 "auto_notify": "1",
                 "scan_interval_sec": "90",
@@ -119,6 +120,7 @@ def update_settings(new_settings: Dict[str, Any]) -> Dict[str, str]:
         "x_api_secret",
         "x_access_token",
         "x_access_secret",
+        "x_auth_token",
         "x_auto_post",
         "auto_notify",
         "scan_interval_sec",
@@ -129,7 +131,7 @@ def update_settings(new_settings: Dict[str, Any]) -> Dict[str, str]:
             cur = conn.cursor()
             for k, v in new_settings.items():
                 if k in allowed_keys and v is not None:
-                    val_str = str(v).strip()[:120]
+                    val_str = str(v).strip()[:160]
                     cur.execute(
                         "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
                         (k, val_str),
