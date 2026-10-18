@@ -905,6 +905,12 @@ def run_full_scan(trigger_notifications: bool = True) -> Dict[str, Any]:
         else 0
     )
 
+    if trigger_notifications:
+        try:
+            notifier.engage_targeted_x_shoppers(settings, max_likes=2)
+        except Exception:
+            pass
+
     return {
         "mode": "full",
         "scanned": len(all_discovered),

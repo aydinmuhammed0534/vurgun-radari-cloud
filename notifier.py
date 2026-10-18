@@ -746,6 +746,135 @@ def send_daily_top3_digest(deals: list, settings: Dict[str, str]) -> Dict[str, A
     return {"ok": tg_ok or bool(x_res.get("ok")), "tg_ok": tg_ok, "x_res": x_res}
 
 
+_X_SHOPPER_QUERIES = [
+    '"amazon indirim" OR "amazonda" OR "fiyatı düşmüş" lang:tr',
+    '"kulaklık önerisi" OR "mouse önerisi" OR "monitör önerisi" lang:tr',
+    '"güneş kremi" OR "cerave" OR "la roche" OR "cilt bakımı" lang:tr',
+    '"stanley termos" OR "airfryer" OR "kahve makinesi" lang:tr',
+    '"indirim kodu" OR "kupon kodu" OR "dip fiyat" lang:tr',
+    '"parfüm önerisi" OR "şampuan" OR "kozmetik indirim" lang:tr',
+]
+
+
+def engage_targeted_x_shoppers(settings: Dict[str, str], max_likes: int = 2) -> Dict[str, Any]:
+    """
+    Organic user acquisition engine: searches X Live feed (f=live) for real Turkish shoppers
+    currently asking for product recommendations or discounts, and likes up to `max_likes` posts
+    so they receive a notification from @vurgunradari and visit our profile / Telegram channel.
+    """
+    auth_token = (settings.get("x_auth_token") or os.environ.get("X_AUTH_TOKEN") or "").strip()
+    clean_auth = re.sub(r"[^a-fA-F0-9]", "", auth_token)
+    if len(clean_auth) < 30:
+        return {"ok": False, "error": "X auth_token eksik."}
+
+    chrome_candidates = [
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        "/usr/bin/google-chrome",
+        "/usr/bin/google-chrome-stable",
+        "/usr/bin/chromium-browser",
+        "/usr/bin/chromium",
+    ]
+    chrome_bin = next((c for c in chrome_candidates if os.path.isfile(c)), "")
+    if not chrome_bin:
+        return {"ok": False, "error": "Chrome bulunamadı."}
+
+    query = _X_SHOPPER_QUERIES[int(time.time() // 90) % len(_X_SHOPPER_QUERIES)]
+    search_url = "https://x.com/search?q=" + urllib.parse.quote(query) + "&src=typed_query&f=live"
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s_port:
+        s_port.bind(("127.0.0.1", 0))
+        port = s_port.getsockname()[1]
+
+    profile_dir = tempfile.mkdtemp(prefix="vurgun_x_grow_")
+    proc = None
+    sock = None
+    try:
+        proc = subprocess.Popen(
+            [
+                chrome_bin,
+                "--headless=new",
+                "--disable-gpu",
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+                f"--remote-debugging-port={port}",
+                f"--user-data-dir={profile_dir}",
+                "about:blank",
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        time.sleep(2.0)
+        tabs = json.loads(urllib.request.urlopen(f"http://127.0.0.1:{port}/json", timeout=5).read().decode("utf-8"))
+        ws_url = [t["webSocketDebuggerUrl"] for t in tabs if t.get("type") == "page"][0]
+        ws_path = "/" + ws_url.split("/", 3)[3]
+
+        sock = socket.create_connection(("127.0.0.1", port), timeout=18)
+        ws_key = base64.b64encode(os.urandom(16)).decode("utf-8")
+        handshake = (
+            f"GET {ws_path} HTTP/1.1\r\n"
+            f"Host: 127.0.0.1:{port}\r\n"
+            "Upgrade: websocket\r\n"
+            "Connection: Upgrade\r\n"
+            f"Sec-WebSocket-Key: {ws_key}\r\n"
+            "Sec-WebSocket-Version: 13\r\n\r\n"
+        )
+        sock.sendall(handshake.encode("utf-8"))
+        sock.recv(4096)
+
+        _cdp_send(sock, 1, "Network.enable")
+        _cdp_send(
+            sock,
+            2,
+            "Network.setCookie",
+            {
+                "name": "auth_token",
+                "value": clean_auth,
+                "domain": ".x.com",
+                "path": "/",
+                "secure": True,
+                "httpOnly": True,
+            },
+        )
+        _cdp_send(sock, 3, "Page.navigate", {"url": search_url})
+        time.sleep(6.5)
+
+        js_engage = f"""
+        (async () => {{
+            const likeBtns = Array.from(document.querySelectorAll('[data-testid="like"]')).slice(0, {int(max_likes)});
+            let liked = 0;
+            for (const b of likeBtns) {{
+                b.click();
+                liked++;
+                await new Promise(r => setTimeout(r, 1400));
+            }}
+            return "liked:" + liked;
+        }})()
+        """
+        eval_res = _cdp_send(
+            sock,
+            4,
+            "Runtime.evaluate",
+            {"expression": js_engage, "awaitPromise": True, "returnByValue": True},
+        )
+        val = str(((eval_res.get("result") or {}).get("result") or {}).get("value") or "")
+        return {"ok": val.startswith("liked:"), "query": query, "result": val}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+    finally:
+        if sock:
+            try:
+                sock.close()
+            except Exception:
+                pass
+        if proc:
+            try:
+                proc.terminate()
+                proc.wait(timeout=3)
+            except Exception:
+                pass
+        shutil.rmtree(profile_dir, ignore_errors=True)
+
+
 def send_ntfy_alert(
     deal: Dict[str, Any],
     settings: Dict[str, str],
