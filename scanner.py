@@ -385,7 +385,12 @@ AMAZON_DIRECT_CATEGORIES = [
     ("/gp/bestsellers/beauty/12571731031", "Makyaj & Kozmetik"),
     ("/gp/bestsellers/beauty/12571733031", "Parfüm"),
     ("/gp/bestsellers/beauty/13525990031", "Kişisel Bakım & Epilasyon"),
-    ("/gp/bestsellers/beauty/12571734031", "Saç Bakımı"),
+    ("/gp/bestsellers/beauty/12571734031", "Şampuan & Saç Bakımı"),
+    ("/gp/bestsellers/hpc", "Sağlık & Temizlik"),
+    ("/gp/bestsellers/grocery", "Süpermarket & Kahve"),
+    ("/gp/bestsellers/kitchen", "Ev & Mutfak"),
+    ("/gp/bestsellers/baby-products", "Anne & Bebek"),
+    ("/gp/bestsellers/home-improvement", "Yapı Market & Hırdavat"),
     ("/gp/bestsellers/electronics/17471820031", "Kulaklık"),
     ("/gp/bestsellers/computers/12601909031", "SSD & Depolama"),
     ("/gp/bestsellers/computers/12601904031", "Monitör"),
@@ -409,8 +414,9 @@ def _parse_tr_price(raw_price_str: str) -> float:
 
 def scan_amazon_category_deals() -> List[Dict[str, Any]]:
     """
-    Directly scans Amazon.com.tr Cosmetics, Dermocosmetics, Perfume, Personal Care,
-    and Electronics bestseller feeds for live in-stock items.
+    Directly scans Amazon.com.tr across 15 high-potential sectors (Cosmetics, Dermocosmetics,
+    Perfume, Personal Care, Shampoo, Health/Cleaning, Grocery/Coffee, Home/Kitchen, Baby,
+    DIY/Tools, and Electronics) for live in-stock items.
     Every returned URL is 100% Amazon.com.tr (/dp/ASIN?tag=vurgunradari-21).
     """
     results: List[Dict[str, Any]] = []
@@ -421,7 +427,7 @@ def scan_amazon_category_deals() -> List[Dict[str, Any]]:
         cards = re.findall(r'id="gridItemRoot"(.*?)</div></div></div></div>', html_str, re.S)
         added_in_cat = 0
         for idx, card in enumerate(cards):
-            if added_in_cat >= 4:
+            if added_in_cat >= 8:
                 break
             asin_m = re.search(r"/dp/([A-Z0-9]{10})", card)
             title_m = re.search(r"_cDEzb_p13n-sc-css-line-clamp-[^>]*>([^<]+)<", card)
@@ -493,115 +499,124 @@ def scan_amazon_category_deals() -> List[Dict[str, Any]]:
 
 def scan_amazon_live_feed() -> List[Dict[str, Any]]:
     """
-    Scrapes the latest 2 pages of DonanımHaber's Amazon TR strict link-only thread
-    and verifies live stock + buybox price directly on Amazon.com.tr.
+    Scrapes the latest pages of DonanımHaber's Amazon TR strict link-only threads
+    (both General Electronics & Gıda/Temizlik/Kozmetik) and verifies live stock + buybox price on Amazon.com.tr.
     """
-    base_thread = "https://forum.donanimhaber.com/amazon-turkiye-firsatlari-sadece-link-paylasimi-sohbet-yasak--135759219"
-    first_html = safe_fetch_html(base_thread)
-    if not first_html:
-        return []
-
-    pages = re.findall(
-        r'href="(/amazon-turkiye-firsatlari-sadece-link-paylasimi-sohbet-yasak--135759219-(\d+))"',
-        first_html,
-    )
-    max_page = max((int(p[1]) for p in pages), default=1)
-    pages_to_scan = [max_page]
-    if max_page > 1:
-        pages_to_scan.append(max_page - 1)
+    dh_threads = [
+        (
+            "https://forum.donanimhaber.com/amazon-turkiye-firsatlari-sadece-link-paylasimi-sohbet-yasak--135759219",
+            r'href="(/amazon-turkiye-firsatlari-sadece-link-paylasimi-sohbet-yasak--135759219-(\d+))"',
+            "Amazon",
+        ),
+        (
+            "https://forum.donanimhaber.com/amazon-gida-temizlik-ve-hijyen-urunleri-firsatlari--148358483",
+            r'href="(/amazon-gida-temizlik-ve-hijyen-urunleri-firsatlari--148358483-(\d+))"',
+            "Kozmetik & Market",
+        ),
+    ]
 
     results: List[Dict[str, Any]] = []
     seen_asins = set()
 
-    for page_num in pages_to_scan:
-        page_url = f"{base_thread}-{page_num}" if page_num > 1 else base_thread
-        page_html = safe_fetch_html(page_url)
-        if not page_html:
+    for base_thread, page_regex, cat_prefix in dh_threads:
+        first_html = safe_fetch_html(base_thread)
+        if not first_html:
             continue
 
-        matches = list(re.finditer(r'id="message_(\d+)"(.*?)</table>', page_html, re.S))
-        for m in reversed(matches[-14:]):
-            mid = m.group(1)
-            block = m.group(2)
-            clean_text = html.unescape(re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", block)).strip())
+        pages = re.findall(page_regex, first_html)
+        max_page = max((int(p[1]) for p in pages), default=1)
+        pages_to_scan = [max_page]
+        if max_page > 1 and cat_prefix == "Amazon":
+            pages_to_scan.append(max_page - 1)
 
-            urls = re.findall(
-                r"(https?://(?:www\.)?amazon\.com\.tr/(?:[^\s\"'<>]*/)?(?:dp|gp/product)/([A-Z0-9]{10})[^\s\"'<>]*)",
-                html.unescape(block),
-            )
-            if not urls:
+        for page_num in pages_to_scan:
+            page_url = f"{base_thread}-{page_num}" if page_num > 1 else base_thread
+            page_html = safe_fetch_html(page_url)
+            if not page_html:
                 continue
 
-            raw_url, asin = urls[0]
-            if asin in seen_asins:
-                continue
-            seen_asins.add(asin)
+            matches = list(re.finditer(r'id="message_(\d+)"(.*?)</table>', page_html, re.S))
+            for m in reversed(matches[-12:]):
+                block = m.group(2)
+                clean_text = html.unescape(re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", block)).strip())
 
-            clean_url = notifier.build_affiliate_url(f"https://www.amazon.com.tr/dp/{asin}", "")
+                urls = re.findall(
+                    r"(https?://(?:www\.)?amazon\.com\.tr/(?:[^\s\"'<>]*/)?(?:dp|gp/product)/([A-Z0-9]{10})[^\s\"'<>]*)",
+                    html.unescape(block),
+                )
+                if not urls:
+                    continue
 
-            # Verify live stock and live price directly on Amazon TR!
-            stock_info = verify_amazon_live_stock(clean_url)
-            if not stock_info["in_stock"]:
-                continue
+                raw_url, asin = urls[0]
+                if asin in seen_asins:
+                    continue
+                seen_asins.add(asin)
 
-            price_val = float(stock_info["live_price"] or 0.0)
-            if price_val <= 0:
-                pm = re.search(r"(\d{1,3}(?:\.\d{3})+|\d{2,6})(?:,\d{1,2})?\s*TL", clean_text, re.I)
-                if pm:
-                    try:
-                        price_val = float(pm.group(1).replace(".", ""))
-                    except ValueError:
-                        price_val = 0.0
-            if price_val <= 0:
-                continue
+                clean_url = notifier.build_affiliate_url(f"https://www.amazon.com.tr/dp/{asin}", "")
 
-            prod_title = stock_info.get("product_title") or ""
-            if not prod_title:
-                og_m = re.search(r'<span class="ql-og-description">(.*?)</span>', block, re.S)
-                if og_m:
-                    prod_title = html.unescape(og_m.group(1)).strip()
-                else:
-                    prod_title = clean_text.split("https://")[0].lstrip("> ").strip()[:140]
+                # Verify live stock and live price directly on Amazon TR!
+                stock_info = verify_amazon_live_stock(clean_url)
+                if not stock_info["in_stock"]:
+                    continue
 
-            if not prod_title or len(prod_title) < 5:
-                continue
+                price_val = float(stock_info["live_price"] or 0.0)
+                if price_val <= 0:
+                    pm = re.search(r"(\d{1,3}(?:\.\d{3})+|\d{2,6})(?:,\d{1,2})?\s*TL", clean_text, re.I)
+                    if pm:
+                        try:
+                            price_val = float(pm.group(1).replace(".", ""))
+                        except ValueError:
+                            price_val = 0.0
+                if price_val <= 0:
+                    continue
 
-            basis_price = float(stock_info.get("basis_price") or 0.0)
-            sav_pct = float(stock_info.get("savings_pct") or 0.0)
-            if basis_price <= price_val:
-                basis_price = round(price_val * 1.25, 0)
-            if sav_pct <= 0:
-                sav_pct = round(((basis_price - price_val) / basis_price) * 100.0, 1)
+                prod_title = stock_info.get("product_title") or ""
+                if not prod_title:
+                    og_m = re.search(r'<span class="ql-og-description">(.*?)</span>', block, re.S)
+                    if og_m:
+                        prod_title = html.unescape(og_m.group(1)).strip()
+                    else:
+                        prod_title = clean_text.split("https://")[0].lstrip("> ").strip()[:140]
 
-            stock_badge = stock_info.get("stock_text", "Stokta Var")
-            suggested_resell = round(basis_price * 0.90, 0)
-            estimated_profit = max(0.0, round(suggested_resell - price_val, 0))
-            roi_pct = round((estimated_profit / price_val) * 100.0, 1)
+                if not prod_title or len(prod_title) < 5:
+                    continue
 
-            results.append(
-                {
-                    "id": f"amz_dh_{asin}",
-                    "source": "Amazon TR Canlı",
-                    "category": f"Amazon ({stock_badge})",
-                    "title": prod_title[:160],
-                    "url": clean_url,
-                    "cheapest_merchant": "Amazon TR",
-                    "cheapest_price": price_val,
-                    "second_merchant": "Piyasa Ort.",
-                    "second_price": basis_price,
-                    "reference_price": basis_price,
-                    "discount_pct": sav_pct,
-                    "spread_pct": sav_pct,
-                    "suggested_resell_price": suggested_resell,
-                    "estimated_profit_tl": estimated_profit,
-                    "roi_pct": roi_pct,
-                    "deal_type": "STOKTA AKTİF",
-                    "offers_json": json.dumps(
-                        [{"merchant": "Amazon TR", "price": price_val, "max_price": basis_price}],
-                        ensure_ascii=False,
-                    ),
-                }
-            )
+                basis_price = float(stock_info.get("basis_price") or 0.0)
+                sav_pct = float(stock_info.get("savings_pct") or 0.0)
+                if basis_price <= price_val:
+                    basis_price = round(price_val * 1.25, 0)
+                if sav_pct <= 0:
+                    sav_pct = round(((basis_price - price_val) / basis_price) * 100.0, 1)
+
+                stock_badge = stock_info.get("stock_text", "Stokta Var")
+                suggested_resell = round(basis_price * 0.90, 0)
+                estimated_profit = max(0.0, round(suggested_resell - price_val, 0))
+                roi_pct = round((estimated_profit / price_val) * 100.0, 1)
+
+                results.append(
+                    {
+                        "id": f"amz_dh_{asin}",
+                        "source": "Amazon TR Canlı",
+                        "category": f"{cat_prefix} ({stock_badge})",
+                        "title": prod_title[:160],
+                        "url": clean_url,
+                        "cheapest_merchant": "Amazon TR",
+                        "cheapest_price": price_val,
+                        "second_merchant": "Piyasa Ort.",
+                        "second_price": basis_price,
+                        "reference_price": basis_price,
+                        "discount_pct": sav_pct,
+                        "spread_pct": sav_pct,
+                        "suggested_resell_price": suggested_resell,
+                        "estimated_profit_tl": estimated_profit,
+                        "roi_pct": roi_pct,
+                        "deal_type": "STOKTA AKTİF",
+                        "offers_json": json.dumps(
+                            [{"merchant": "Amazon TR", "price": price_val, "max_price": basis_price}],
+                            ensure_ascii=False,
+                        ),
+                    }
+                )
     return results
 
 
@@ -656,6 +671,8 @@ def scan_dh_hot_threads() -> List[Dict[str, Any]]:
                 "maybelline",
                 "philips",
                 "braun",
+                "kahve",
+                "deterjan",
             )
         ):
             continue
@@ -755,7 +772,8 @@ def _dispatch_alerts(candidates_for_alert: List[Dict[str, Any]], settings: Dict[
 
 def run_sniper_scan(trigger_notifications: bool = True) -> Dict[str, Any]:
     """
-    Ultra-fast 20-second sniper scan: checks Amazon TR live link feed and newest Sıcak Fırsatlar threads.
+    Ultra-fast 20-second sniper scan: checks Amazon TR live link feed, newest Sıcak Fırsatlar threads,
+    and also dispatches any queued unnotified dashboard deals so nothing sits unshared.
     """
     settings = db.get_settings()
     discovered: List[Dict[str, Any]] = []
@@ -777,7 +795,16 @@ def run_sniper_scan(trigger_notifications: bool = True) -> Dict[str, Any]:
             if not meta["already_notified"]:
                 candidates.append(d)
 
-    notified = _dispatch_alerts(candidates, settings, max_alerts=2) if trigger_notifications else 0
+    # Also pull unshared deals from the database queue if fewer than 2 fresh alerts triggered
+    if len(candidates) < 2:
+        seen_ids = {c["id"] for c in candidates}
+        queued = db.get_unnotified_deals(min_disc=10.0, min_profit=15.0, limit=2)
+        for q in queued:
+            if q["id"] not in seen_ids:
+                candidates.append(q)
+                seen_ids.add(q["id"])
+
+    notified = _dispatch_alerts(candidates, settings, max_alerts=1) if trigger_notifications else 0
     return {
         "mode": "sniper",
         "scanned": len(discovered),
@@ -790,7 +817,7 @@ def run_sniper_scan(trigger_notifications: bool = True) -> Dict[str, Any]:
 def run_full_scan(trigger_notifications: bool = True) -> Dict[str, Any]:
     settings = db.get_settings()
     min_disc = float(settings.get("min_discount_pct") or 12.0)
-    min_profit = float(settings.get("min_profit_tl") or 50.0)
+    min_profit = float(settings.get("min_profit_tl") or 20.0)
 
     all_discovered: List[Dict[str, Any]] = []
     try:
@@ -827,6 +854,14 @@ def run_full_scan(trigger_notifications: bool = True) -> Dict[str, Any]:
     candidates_for_alert.sort(
         key=lambda x: (x["discount_pct"], x["estimated_profit_tl"]), reverse=True
     )
+
+    if len(candidates_for_alert) < 2:
+        seen_ids = {c["id"] for c in candidates_for_alert}
+        queued = db.get_unnotified_deals(min_disc=10.0, min_profit=15.0, limit=3)
+        for q in queued:
+            if q["id"] not in seen_ids:
+                candidates_for_alert.append(q)
+                seen_ids.add(q["id"])
 
     notified_count = (
         _dispatch_alerts(candidates_for_alert, settings, max_alerts=2)

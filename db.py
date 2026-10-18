@@ -249,7 +249,33 @@ def mark_deal_notified(deal_id: str) -> None:
             conn.close()
 
 
-def list_deals(filter_type: Optional[str] = None, limit: int = 120) -> List[Dict[str, Any]]:
+def get_unnotified_deals(
+    min_disc: float = 10.0,
+    min_profit: float = 30.0,
+    limit: int = 10,
+) -> List[Dict[str, Any]]:
+    with _db_lock:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            safe_limit = max(1, min(int(limit), 50))
+            cur.execute(
+                """
+                SELECT * FROM deals
+                WHERE notified = 0
+                  AND url LIKE 'https://www.amazon.com.tr/dp/%'
+                  AND (discount_pct >= ? OR estimated_profit_tl >= ?)
+                ORDER BY discount_pct DESC, estimated_profit_tl DESC, updated_at DESC
+                LIMIT ?
+                """,
+                (float(min_disc), float(min_profit), safe_limit),
+            )
+            return [dict(row) for row in cur.fetchall()]
+        finally:
+            conn.close()
+
+
+def list_deals(filter_type: Optional[str] = None, limit: int = 200) -> List[Dict[str, Any]]:
     with _db_lock:
         conn = get_connection()
         try:
@@ -269,7 +295,7 @@ def list_deals(filter_type: Optional[str] = None, limit: int = 120) -> List[Dict
                 cur.execute(
                     """
                     SELECT * FROM deals
-                    WHERE cheapest_price > 100 AND cheapest_price <= 10000 AND estimated_profit_tl >= 200
+                    WHERE cheapest_price > 100 AND cheapest_price <= 10000 AND estimated_profit_tl >= 100
                     ORDER BY roi_pct DESC, estimated_profit_tl DESC
                     LIMIT ?
                     """,
@@ -289,7 +315,17 @@ def list_deals(filter_type: Optional[str] = None, limit: int = 120) -> List[Dict
                 cur.execute(
                     """
                     SELECT * FROM deals
-                    WHERE category LIKE '%Kozmetik%' OR category LIKE '%Cilt%' OR category LIKE '%Parfüm%' OR category LIKE '%Bakım%'
+                    WHERE category LIKE '%Kozmetik%' OR category LIKE '%Cilt%' OR category LIKE '%Parfüm%' OR category LIKE '%Bakım%' OR category LIKE '%Şampuan%'
+                    ORDER BY updated_at DESC, discount_pct DESC
+                    LIMIT ?
+                    """,
+                    (safe_limit,),
+                )
+            elif filter_type == "market_home":
+                cur.execute(
+                    """
+                    SELECT * FROM deals
+                    WHERE category LIKE '%Market%' OR category LIKE '%Kahve%' OR category LIKE '%Temizlik%' OR category LIKE '%Mutfak%' OR category LIKE '%Bebek%' OR category LIKE '%Yapı%'
                     ORDER BY updated_at DESC, discount_pct DESC
                     LIMIT ?
                     """,

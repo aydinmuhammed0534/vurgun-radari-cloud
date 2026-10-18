@@ -196,7 +196,7 @@ class RadarRequestHandler(BaseHTTPRequestHandler):
             qs = urllib.parse.parse_qs(parsed.query)
             flt = (qs.get("filter") or ["all"])[0]
             settings = db.get_settings()
-            deals = db.list_deals(filter_type=flt, limit=120)
+            deals = db.list_deals(filter_type=flt, limit=200)
             amz_tag = settings.get("amazon_affiliate_tag", "vurgunradari-21")
             hb_aff = settings.get("hepsiburada_aff_id", "")
             for d in deals:
