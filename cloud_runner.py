@@ -24,12 +24,16 @@ def main() -> None:
         "X_API_SECRET": "x_api_secret",
         "X_ACCESS_TOKEN": "x_access_token",
         "X_ACCESS_SECRET": "x_access_secret",
+        "INSTAGRAM_SESSIONID": "instagram_sessionid",
+        "INSTAGRAM_USERNAME": "instagram_username",
     }
     updates = {
         "auto_notify": "1",
         "telegram_auto_post": "1",
         "x_auto_post": "1",
+        "instagram_auto_post": "1",
         "telegram_chat_id": "@vurgunradari",
+        "instagram_username": "@vurgunradari",
         "amazon_affiliate_tag": "vurgunradari-21",
     }
     for env_key, setting_key in env_mapping.items():

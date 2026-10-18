@@ -212,6 +212,13 @@ def resolve_direct_store_offer(cimri_url: str, title: str) -> Dict[str, Any]:
                                         "merchant": seller_name,
                                     }
                                 )
+                    prod_img = ""
+                    img_val = obj.get("image")
+                    if isinstance(img_val, list) and img_val:
+                        prod_img = str(img_val[0])
+                    elif isinstance(img_val, str):
+                        prod_img = img_val
+
                     if amazon_offers:
                         amazon_offers.sort(key=lambda x: x["price"])
                         best = amazon_offers[0]
@@ -225,6 +232,7 @@ def resolve_direct_store_offer(cimri_url: str, title: str) -> Dict[str, Any]:
                             "cheapest_merchant": "Amazon TR",
                             "second_price": second["price"] if second else 0.0,
                             "second_merchant": second["merchant"] if second else "Piyasa Ort.",
+                            "image_url": prod_img,
                             "ts": now,
                         }
                         _direct_offer_cache[cimri_url] = result
@@ -264,6 +272,8 @@ def scan_cimri_category(slug: str, category_label: str) -> List[Dict[str, Any]]:
             prod_id = p.get("id")
             title = (p.get("title") or "").strip()
             rel_url = (p.get("url") or "").strip()
+            image_id = p.get("imageId")
+            image_url = f"https://cdn.cimri.io/image/1000x1000/product_{image_id}.jpg" if image_id else ""
             if not prod_id or not title:
                 continue
 
@@ -323,6 +333,8 @@ def scan_cimri_category(slug: str, category_label: str) -> List[Dict[str, Any]]:
             direct_store_url = resolved["url"]
             cheapest_price = float(resolved["cheapest_price"])
             cheapest_merchant = str(resolved["cheapest_merchant"])
+            if not image_url and resolved.get("image_url"):
+                image_url = resolved["image_url"]
             if resolved.get("second_price", 0) > cheapest_price:
                 second_price = float(resolved["second_price"])
                 second_merchant = str(resolved["second_merchant"])
@@ -376,6 +388,7 @@ def scan_cimri_category(slug: str, category_label: str) -> List[Dict[str, Any]]:
                     "roi_pct": round(roi_pct, 1),
                     "deal_type": deal_type,
                     "offers_json": json.dumps(valid_offers[:4], ensure_ascii=False),
+                    "image_url": image_url,
                 }
             )
     return found_deals
@@ -470,6 +483,11 @@ def scan_amazon_category_deals() -> List[Dict[str, Any]]:
             estimated_profit = max(0.0, round(suggested_resell - live_price, 0))
             roi_pct = round((estimated_profit / live_price) * 100.0, 1) if live_price > 0 else 0.0
 
+            img_m = re.search(r'src="(https://[^"]+amazon\.com[^"]+\.jpg)"', card)
+            card_img = ""
+            if img_m:
+                card_img = re.sub(r'\._[^.]+\.', '.', img_m.group(1))
+
             added_in_cat += 1
             results.append(
                 {
@@ -493,6 +511,7 @@ def scan_amazon_category_deals() -> List[Dict[str, Any]]:
                         [{"merchant": "Amazon TR", "price": live_price, "max_price": basis_price}],
                         ensure_ascii=False,
                     ),
+                    "image_url": card_img,
                 }
             )
     return results
@@ -795,6 +814,62 @@ def _save_posted_history() -> None:
         pass
 
 
+_recent_dispatched_categories: List[str] = []
+
+
+def score_deal_attractiveness(deal: Dict[str, Any]) -> float:
+    score = 0.0
+    price = float(deal.get("cheapest_price") or 0.0)
+    disc = float(deal.get("discount_pct") or 0.0)
+    profit = float(deal.get("estimated_profit_tl") or 0.0)
+    cat = str(deal.get("category") or "").lower()
+    title = str(deal.get("title") or "").lower()
+    img = (deal.get("image_url") or "").strip()
+
+    # Must have authentic product image
+    if not img:
+        return -999.0
+
+    # Discount score: deeper discounts get higher points
+    score += min(disc * 2.5, 90.0)
+
+    # Cash savings callout (e.g. 1.000 TL+ cebinde kalıyorsa inanılmaz izlenir)
+    if profit >= 1000:
+        score += 40.0
+    elif profit >= 400:
+        score += 25.0
+
+    # Follower-magnet sweet spot:
+    # 1. High-appeal prestige/tech/lifestyle items (1.200 TL - 12.000 TL) -> Top priority for viral growth!
+    if 1200 <= price <= 12000:
+        score += 65.0
+    # 2. Fast-converting impulse buy deals (150 TL - 1.200 TL)
+    elif 150 <= price < 1200:
+        score += 45.0
+    # 3. Budget basket fillers (< 150 TL)
+    elif price < 150:
+        score += 15.0
+    # 4. Out of reach ultra luxury (> 20.000 TL)
+    else:
+        score -= 25.0
+
+    # Prestige brands & viral buzzwords that make people stop scrolling & follow
+    follower_magnet_brands = [
+        "apple", "airpods", "razer", "monitör", "espresso", "sennheiser", "msi",
+        "asus", "lg", "philips", "lego", "logitech", "stanley", "xiaomi", "tapo",
+        "bioderma", "sauvage", "parfüm", "dior", "tost makinesi", "kahve makinesi",
+        "gaming", "oyuncu", "termos", "tıraş"
+    ]
+    if any(k in title or k in cat for k in follower_magnet_brands):
+        score += 50.0
+
+    # Category rotation: penalize recent categories to guarantee diversity
+    if _recent_dispatched_categories and any(cat == rc for rc in _recent_dispatched_categories[-2:]):
+        score -= 50.0
+
+    return score
+
+
 def _dispatch_alerts(candidates_for_alert: List[Dict[str, Any]], settings: Dict[str, str], max_alerts: int = 1) -> int:
     global _last_post_epoch
     auto_notify = settings.get("auto_notify", "1") == "1"
@@ -822,8 +897,14 @@ def _dispatch_alerts(candidates_for_alert: List[Dict[str, Any]], settings: Dict[
         )
     )
 
+    # Sort candidates by viral attractiveness and ensure image is present
+    sorted_candidates = [c for c in candidates_for_alert if (c.get("image_url") or "").strip()]
+    sorted_candidates.sort(key=score_deal_attractiveness, reverse=True)
+    if not sorted_candidates:
+        sorted_candidates = candidates_for_alert
+
     notified_count = 0
-    for alert_deal in candidates_for_alert:
+    for alert_deal in sorted_candidates:
         if notified_count >= 1:
             break
         deal_url = str(alert_deal.get("url") or "")
@@ -846,6 +927,25 @@ def _dispatch_alerts(candidates_for_alert: List[Dict[str, Any]], settings: Dict[
         db.mark_deal_notified(alert_deal["id"])
         _save_posted_history()
 
+        # Auto-generate Instagram Story & Reels video for the deal
+        png_path, mp4_path = None, None
+        try:
+            import generate_perfect_ad
+            png_path, mp4_path = generate_perfect_ad.generate_for_deal(alert_deal)
+        except Exception:
+            pass
+
+        # If Instagram auto post enabled, publish Reels & Story
+        ig_enabled = str(settings.get("instagram_auto_post", "0")).strip() in ("1", "true")
+        if ig_enabled and mp4_path:
+            try:
+                import instagram_bot
+                instagram_bot.post_deal_reels(alert_deal, mp4_path, settings)
+                if png_path:
+                    instagram_bot.post_deal_story(alert_deal, png_path, settings)
+            except Exception:
+                pass
+
         res = notifier.send_ntfy_alert(alert_deal, settings)
         tg_ok = False
         if tg_enabled:
@@ -857,6 +957,11 @@ def _dispatch_alerts(candidates_for_alert: List[Dict[str, Any]], settings: Dict[
             x_ok = bool(x_res.get("ok"))
         if res.get("ok") or tg_ok or x_ok:
             notified_count += 1
+            deal_cat = str(alert_deal.get("category") or "").lower()
+            if deal_cat:
+                _recent_dispatched_categories.append(deal_cat)
+                if len(_recent_dispatched_categories) > 10:
+                    _recent_dispatched_categories.pop(0)
     return notified_count
 
 

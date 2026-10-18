@@ -22,6 +22,9 @@
   const inpAffTag = document.getElementById("inp-aff-tag");
   const inpHbAff = document.getElementById("inp-hb-aff");
   const inpSearch = document.getElementById("inp-search");
+  const inpIgUser = document.getElementById("inp-ig-user");
+  const inpIgPass = document.getElementById("inp-ig-pass");
+  const chkIgAutopost = document.getElementById("chk-ig-autopost");
 
   function showToast(message) {
     const container = document.getElementById("toast-container");
@@ -212,9 +215,59 @@
         sendDealToPhone(deal.id);
       });
 
+      const mediaBtn = createEl("button", "btn btn-accent", "🎬 Story & Reels");
+      mediaBtn.setAttribute("title", "Bu fırsat için Instagram Story ve Reels videosu oluştur");
+      mediaBtn.addEventListener("click", async function () {
+        mediaBtn.disabled = true;
+        mediaBtn.textContent = "⏳ Hazırlanıyor...";
+        try {
+          const resp = await fetch("/api/generate-media?id=" + encodeURIComponent(deal.id));
+          const resData = await resp.json();
+          if (resData.ok) {
+            showToast("✅ Instagram Story & Reels videosu hazırlandı!");
+            window.open(resData.story_url, "_blank");
+            window.open(resData.reels_url, "_blank");
+          } else {
+            showToast("❌ Medya oluşturulamadı: " + (resData.error || "Hata"));
+          }
+        } catch (e) {
+          showToast("❌ Sunucu hatası");
+        } finally {
+          mediaBtn.disabled = false;
+          mediaBtn.textContent = "🎬 Story & Reels";
+        }
+      });
+
+      const igBtn = createEl("button", "btn btn-secondary", "📸 IG Reels Paylaş");
+      igBtn.setAttribute("title", "Bu fırsatı Instagram Reels & Story olarak hesabına paylaş");
+      igBtn.addEventListener("click", async function () {
+        igBtn.disabled = true;
+        igBtn.textContent = "⏳ Paylaşılıyor...";
+        try {
+          const resp = await fetch("/api/post-instagram", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ deal_id: deal.id, type: "reel" })
+          });
+          const resData = await resp.json();
+          if (resData.ok) {
+            showToast("🎉 Instagram Reels hesabına başarıyla yüklendi!");
+          } else {
+            showToast("❌ Instagram Hatası: " + (resData.error || "Giriş bilgisi gerekli"));
+          }
+        } catch (e) {
+          showToast("❌ Bağlantı hatası");
+        } finally {
+          igBtn.disabled = false;
+          igBtn.textContent = "📸 IG Reels Paylaş";
+        }
+      });
+
       actionsRow2.appendChild(copyBtn);
       actionsRow2.appendChild(resellBtn);
       actionsRow2.appendChild(ntfyBtn);
+      actionsRow2.appendChild(mediaBtn);
+      actionsRow2.appendChild(igBtn);
       card.appendChild(actionsRow2);
 
       dealsGrid.appendChild(card);
@@ -261,6 +314,9 @@
       inpMinProfit.value = settings.min_profit_tl || "350";
       inpAffTag.value = settings.amazon_affiliate_tag || "senintagin-21";
       inpHbAff.value = settings.hepsiburada_aff_id || "";
+      if (inpIgUser) inpIgUser.value = settings.instagram_username || "@vurgunradari";
+      if (inpIgPass && settings.instagram_password) inpIgPass.value = settings.instagram_password;
+      if (chkIgAutopost) chkIgAutopost.checked = settings.instagram_auto_post === "1";
       settingsLoaded = true;
     }
 
@@ -374,6 +430,9 @@
       min_profit_tl: inpMinProfit.value.trim(),
       amazon_affiliate_tag: inpAffTag.value.trim(),
       hepsiburada_aff_id: inpHbAff.value.trim(),
+      instagram_username: inpIgUser ? inpIgUser.value.trim() : "@vurgunradari",
+      instagram_password: inpIgPass ? inpIgPass.value.trim() : "",
+      instagram_auto_post: chkIgAutopost && chkIgAutopost.checked ? "1" : "0",
     };
     const resp = await fetch("/api/settings", {
       method: "POST",

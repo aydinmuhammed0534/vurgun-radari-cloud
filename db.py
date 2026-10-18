@@ -40,12 +40,17 @@ def init_db() -> None:
                     roi_pct REAL NOT NULL,
                     deal_type TEXT NOT NULL,
                     offers_json TEXT NOT NULL,
+                    image_url TEXT,
                     notified INTEGER NOT NULL DEFAULT 0,
                     created_at INTEGER NOT NULL,
                     updated_at INTEGER NOT NULL
                 )
                 """
             )
+            try:
+                cur.execute("ALTER TABLE deals ADD COLUMN image_url TEXT")
+            except Exception:
+                pass
             cur.execute(
                 """
                 CREATE TABLE IF NOT EXISTS price_history (
@@ -83,6 +88,10 @@ def init_db() -> None:
                 "x_auto_post": "1",
                 "auto_notify": "1",
                 "scan_interval_sec": "90",
+                "instagram_username": "@vurgunradari",
+                "instagram_password": "",
+                "instagram_sessionid": "",
+                "instagram_auto_post": "0",
             }
             for k, v in defaults.items():
                 cur.execute(
@@ -124,6 +133,10 @@ def update_settings(new_settings: Dict[str, Any]) -> Dict[str, str]:
         "x_auto_post",
         "auto_notify",
         "scan_interval_sec",
+        "instagram_username",
+        "instagram_password",
+        "instagram_sessionid",
+        "instagram_auto_post",
     }
     with _db_lock:
         conn = get_connection()
@@ -178,8 +191,8 @@ def upsert_deal(deal: Dict[str, Any]) -> Dict[str, Any]:
                     second_merchant, second_price, reference_price,
                     discount_pct, spread_pct,
                     suggested_resell_price, estimated_profit_tl, roi_pct,
-                    deal_type, offers_json, notified, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    deal_type, offers_json, image_url, notified, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     title = excluded.title,
                     url = excluded.url,
@@ -195,6 +208,7 @@ def upsert_deal(deal: Dict[str, Any]) -> Dict[str, Any]:
                     roi_pct = excluded.roi_pct,
                     deal_type = excluded.deal_type,
                     offers_json = excluded.offers_json,
+                    image_url = CASE WHEN excluded.image_url != '' AND excluded.image_url IS NOT NULL THEN excluded.image_url ELSE deals.image_url END,
                     notified = ?,
                     updated_at = excluded.updated_at
                 """,
@@ -216,6 +230,7 @@ def upsert_deal(deal: Dict[str, Any]) -> Dict[str, Any]:
                     deal["roi_pct"],
                     deal["deal_type"],
                     deal["offers_json"],
+                    deal.get("image_url", ""),
                     1 if already_notified else 0,
                     now,
                     now,
@@ -273,6 +288,7 @@ def get_unnotified_deals(
                 SELECT * FROM deals
                 WHERE notified = 0
                   AND url LIKE 'https://www.amazon.com.tr/dp/%'
+                  AND image_url != '' AND image_url IS NOT NULL
                   AND (discount_pct >= ? OR estimated_profit_tl >= ?)
                 ORDER BY discount_pct DESC, estimated_profit_tl DESC, updated_at DESC
                 LIMIT ?

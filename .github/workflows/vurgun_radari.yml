@@ -22,17 +22,29 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install system dependencies & Python packages
+        run: |
+          sudo apt-get update && sudo apt-get install -y ffmpeg
+          pip install -r requirements.txt
+
       - name: Restore & Save SQLite Deal History Cache
         uses: actions/cache@v4
         with:
           path: |
-            radar_data.db
+            vurgun_radari.db
             posted_history.json
+            static/ig_session.json
           key: vurgun-db-${{ github.run_id }}
           restore-keys: |
             vurgun-db-
 
-      - name: Run Vurgun Radari Scan & Auto-Post (Telegram + X + ntfy)
+      - name: Run Vurgun Radari Scan & Auto-Post (Telegram + X + Instagram + ntfy)
         env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -43,6 +55,8 @@ jobs:
           X_API_SECRET: ${{ secrets.X_API_SECRET }}
           X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
           X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}
+          INSTAGRAM_SESSIONID: ${{ secrets.INSTAGRAM_SESSIONID }}
+          INSTAGRAM_USERNAME: '@vurgunradari'
           FORCE_FIRST_POST: ${{ github.event.inputs.force_first_post || '0' }}
           CLOUD_SNIPER_CYCLES: '6'
         run: python3 cloud_runner.py

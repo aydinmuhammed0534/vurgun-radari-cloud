@@ -7,3 +7,8 @@ __pycache__/
 *.log
 .env
 .DS_Store
+static/ig_session*.json
+static/challenge_debug.json
+*.mp4
+static/deals/
+

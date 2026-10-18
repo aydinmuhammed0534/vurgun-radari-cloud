@@ -826,11 +826,11 @@ def engage_targeted_x_shoppers(
     force_reply: bool = False,
 ) -> Dict[str, Any]:
     """
-    Organic user acquisition engine + Sniper Reply:
-    1) Searches X Live feed (f=live) for real Turkish shoppers asking for product recommendations.
-    2) Likes up to `max_likes` posts.
-    3) Writes 1 contextual, link-free Sniper Reply recommending our matching live Amazon TR deal
-       (rate-limited to 1 reply per 25 minutes to keep the account 100% safe from spam filters).
+    Organic user acquisition engine:
+    Searches X Live feed (f=live) for real Turkish shoppers asking for product recommendations
+    or discounts, and likes up to `max_likes` posts so they receive a notification from @vurgunradari.
+    Auto-commenting (reply) is disabled by default (force_reply=False) so the bot never writes
+    irrelevant comments under users' tweets.
     """
     auth_token = (settings.get("x_auth_token") or os.environ.get("X_AUTH_TOKEN") or "").strip()
     clean_auth = re.sub(r"[^a-fA-F0-9]", "", auth_token)
@@ -858,9 +858,8 @@ def engage_targeted_x_shoppers(
         hist_data = {}
 
     replied_ids = set(hist_data.get("replied_status_ids") or [])
-    last_reply_ts = int(hist_data.get("last_sniper_reply_ts") or 0)
     now_ts = int(time.time())
-    can_reply = force_reply or ((now_ts - last_reply_ts) >= SNIPER_REPLY_COOLDOWN_SECONDS)
+    can_reply = bool(force_reply)
 
     idx = int(now_ts // 90) % len(_X_SNIPER_TARGETS)
     query, cat_keywords, preferred_cat = _X_SNIPER_TARGETS[idx]

@@ -75,6 +75,11 @@ def sanitize_settings_for_client(raw_settings: Dict[str, str]) -> Dict[str, str]
     safe["x_access_token"] = mask_token(x_atok) if x_atok else ""
     safe["x_access_secret"] = mask_token(x_asec) if x_asec else ""
     safe["x_configured"] = "1" if (x_auth or (x_key and x_sec and x_atok and x_asec)) else "0"
+
+    ig_pass = safe.get("instagram_password", "")
+    ig_sess = safe.get("instagram_sessionid", "")
+    safe["instagram_password"] = mask_token(ig_pass) if ig_pass else (mask_token(ig_sess) if ig_sess else "")
+    safe["instagram_configured"] = "1" if (ig_pass or ig_sess or os.path.exists("static/ig_session.json")) else "0"
     return safe
 
 
@@ -191,6 +196,39 @@ class RadarRequestHandler(BaseHTTPRequestHandler):
         if path == "/app.js":
             self._serve_static("app.js", "application/javascript; charset=utf-8")
             return
+        if path.startswith("/static/"):
+            rel_name = path[len("/static/"):]
+            ext = os.path.splitext(rel_name)[1].lower()
+            ct = "application/octet-stream"
+            if ext == ".png": ct = "image/png"
+            elif ext in (".jpg", ".jpeg"): ct = "image/jpeg"
+            elif ext == ".mp4": ct = "video/mp4"
+            elif ext == ".css": ct = "text/css; charset=utf-8"
+            elif ext == ".js": ct = "application/javascript; charset=utf-8"
+            self._serve_static(rel_name, ct)
+            return
+
+        if path == "/api/generate-media":
+            qs = urllib.parse.parse_qs(parsed.query)
+            deal_id = (qs.get("id") or [""])[0]
+            if not deal_id:
+                self._send_json(400, {"error": "deal id missing"})
+                return
+            deals = [d for d in db.list_deals("all", limit=500) if d.get("id") == deal_id]
+            if not deals:
+                self._send_json(404, {"error": "Deal not found"})
+                return
+            try:
+                import generate_perfect_ad
+                png_path, mp4_path = generate_perfect_ad.generate_for_deal(deals[0])
+                self._send_json(200, {
+                    "ok": True,
+                    "story_url": f"/{png_path}",
+                    "reels_url": f"/{mp4_path}"
+                })
+            except Exception as e:
+                self._send_json(500, {"error": str(e)})
+            return
 
         if path == "/api/state":
             qs = urllib.parse.parse_qs(parsed.query)
@@ -247,6 +285,8 @@ class RadarRequestHandler(BaseHTTPRequestHandler):
                     "x_api_secret",
                     "x_access_token",
                     "x_access_secret",
+                    "instagram_password",
+                    "instagram_sessionid",
                 ):
                     val = str(body.get(secret_field) or "").strip()
                     if val.startswith("***"):
@@ -260,6 +300,26 @@ class RadarRequestHandler(BaseHTTPRequestHandler):
             else:
                 updated = db.get_settings()
             self._send_json(200, {"ok": True, "settings": sanitize_settings_for_client(updated)})
+            return
+
+        if path == "/api/post-instagram":
+            deal_id = body.get("deal_id", "") if isinstance(body, dict) else ""
+            media_type = body.get("type", "reel") if isinstance(body, dict) else "reel"
+            deals = [d for d in db.list_deals("all", limit=500) if d.get("id") == deal_id]
+            if not deals:
+                self._send_json(404, {"ok": False, "error": "Fırsat bulunamadı."})
+                return
+            settings = db.get_settings()
+            try:
+                import generate_perfect_ad, instagram_bot
+                png_path, mp4_path = generate_perfect_ad.generate_for_deal(deals[0])
+                if media_type == "story":
+                    res = instagram_bot.post_deal_story(deals[0], png_path, settings)
+                else:
+                    res = instagram_bot.post_deal_reels(deals[0], mp4_path, settings)
+                self._send_json(200 if res.get("ok") else 400, res)
+            except Exception as e:
+                self._send_json(500, {"ok": False, "error": str(e)})
             return
 
         if path == "/api/test-ntfy":
