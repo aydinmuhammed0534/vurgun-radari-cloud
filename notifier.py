@@ -777,20 +777,23 @@ SNIPER_REPLY_COOLDOWN_SECONDS = 1500  # 25 minutes anti-ban cooldown between Sni
 
 
 def _pick_matching_deal_for_sniper(deals: list, keywords: tuple, preferred_cat: str = "") -> Dict[str, Any]:
-    cat_matches = []
     kw_matches = []
+    cat_matches = []
     for d in deals:
         if "amazon.com.tr/dp/" not in str(d.get("url") or ""):
             continue
         cat_str = (d.get("category") or "").lower()
         title_str = (d.get("title") or "").lower()
-        if preferred_cat and preferred_cat.lower() in cat_str:
-            cat_matches.append(d)
-        elif any(k in title_str for k in keywords):
+        if any(k in title_str for k in keywords):
             kw_matches.append(d)
-    pool = cat_matches or kw_matches or [d for d in deals if "amazon.com.tr/dp/" in str(d.get("url") or "")]
+        elif preferred_cat and preferred_cat.lower() in cat_str:
+            cat_matches.append(d)
+    pool = kw_matches or cat_matches or [d for d in deals if "amazon.com.tr/dp/" in str(d.get("url") or "")]
     pool.sort(key=lambda x: float(x.get("discount_pct") or 0), reverse=True)
-    return pool[0] if pool else {}
+    if not pool:
+        return {}
+    top_n = pool[: min(len(pool), 4)]
+    return top_n[int(time.time() // 60) % len(top_n)]
 
 
 def _build_sniper_reply_text(deal: Dict[str, Any]) -> str:
