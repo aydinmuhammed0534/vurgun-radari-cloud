@@ -299,22 +299,48 @@ class RadarRequestHandler(BaseHTTPRequestHandler):
                 if updates:
                     db.update_settings(updates)
             settings = db.get_settings()
-            deals = db.list_deals(filter_type="low_budget", limit=1) or db.list_deals(limit=1)
-            sample_deal = (
-                deals[0]
-                if deals
-                else {
-                    "title": "Asus ROG Gladius III Wireless AimPoint Oyuncu Mouse",
-                    "url": "https://www.cimri.com/oyuncu-mouse",
-                    "cheapest_merchant": "idefix",
-                    "cheapest_price": 3899.0,
-                    "second_merchant": "PttAVM",
-                    "second_price": 6821.0,
-                    "reference_price": 6821.0,
-                    "discount_pct": 42.7,
-                }
-            )
+            deals = db.list_deals(limit=1)
+            sample_deal = deals[0] if deals else {
+                "title": "Philips Lumea 9900 Serisi BRI951/03 IPL Lazer Epilasyon",
+                "url": "https://www.amazon.com.tr/dp/B0G4D99ZFF?tag=vurgunradari-21",
+                "cheapest_merchant": "Amazon TR",
+                "cheapest_price": 19394.0,
+                "second_merchant": "Piyasa Ort.",
+                "second_price": 24049.0,
+                "reference_price": 24049.0,
+                "discount_pct": 19.4,
+            }
             res = notifier.send_telegram_channel_post(sample_deal, settings, is_test=True)
+            threading.Thread(
+                target=notifier.send_x_auto_tweet,
+                args=(sample_deal, settings),
+                daemon=True,
+            ).start()
+            self._send_json(200, res)
+            return
+
+        if path == "/api/test-x":
+            if isinstance(body, dict):
+                x_updates: Dict[str, Any] = {}
+                for k in ("x_auth_token", "x_api_key", "x_api_secret", "x_access_token", "x_access_secret"):
+                    v = str(body.get(k) or "").strip()
+                    if v and not v.startswith("***"):
+                        x_updates[k] = v
+                if x_updates:
+                    db.update_settings(x_updates)
+            settings = db.get_settings()
+            deals = db.list_deals(limit=1)
+            sample_deal = deals[0] if deals else {
+                "title": "Philips Lumea 9900 Serisi BRI951/03 IPL Lazer Epilasyon",
+                "url": "https://www.amazon.com.tr/dp/B0G4D99ZFF?tag=vurgunradari-21",
+                "cheapest_merchant": "Amazon TR",
+                "cheapest_price": 19394.0,
+                "second_merchant": "Piyasa Ort.",
+                "second_price": 24049.0,
+                "reference_price": 24049.0,
+                "discount_pct": 19.4,
+            }
+            res = notifier.send_x_auto_tweet(sample_deal, settings)
             self._send_json(200, res)
             return
 
@@ -341,6 +367,11 @@ class RadarRequestHandler(BaseHTTPRequestHandler):
                 self._send_json(404, {"ok": False, "error": "Fırsat bulunamadı"})
                 return
             res = notifier.send_telegram_channel_post(target, settings, is_test=False)
+            threading.Thread(
+                target=notifier.send_x_auto_tweet,
+                args=(target, settings),
+                daemon=True,
+            ).start()
             self._send_json(200, res)
             return
 

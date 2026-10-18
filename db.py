@@ -285,6 +285,16 @@ def list_deals(filter_type: Optional[str] = None, limit: int = 120) -> List[Dict
                     """,
                     (safe_limit,),
                 )
+            elif filter_type == "cosmetics":
+                cur.execute(
+                    """
+                    SELECT * FROM deals
+                    WHERE category LIKE '%Kozmetik%' OR category LIKE '%Cilt%' OR category LIKE '%Parfüm%' OR category LIKE '%Bakım%'
+                    ORDER BY updated_at DESC, discount_pct DESC
+                    LIMIT ?
+                    """,
+                    (safe_limit,),
+                )
             elif filter_type == "hot_threads":
                 cur.execute(
                     """
