@@ -950,7 +950,11 @@ def run_full_scan(trigger_notifications: bool = True) -> Dict[str, Any]:
 
     if trigger_notifications:
         try:
-            notifier.engage_targeted_x_shoppers(settings, max_likes=2)
+            notifier.engage_targeted_x_shoppers(
+                settings,
+                deals=db.list_deals("all", limit=60),
+                max_likes=2,
+            )
         except Exception:
             pass
 

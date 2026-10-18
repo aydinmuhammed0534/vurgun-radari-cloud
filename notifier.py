@@ -739,21 +739,86 @@ def send_daily_top3_digest(deals: list, settings: Dict[str, str]) -> Dict[str, A
     return {"ok": tg_ok or bool(x_res.get("ok")), "tg_ok": tg_ok, "x_res": x_res}
 
 
-_X_SHOPPER_QUERIES = [
-    '"amazon indirim" OR "amazonda" OR "fiyatı düşmüş" lang:tr',
-    '"kulaklık önerisi" OR "mouse önerisi" OR "monitör önerisi" lang:tr',
-    '"güneş kremi" OR "cerave" OR "la roche" OR "cilt bakımı" lang:tr',
-    '"stanley termos" OR "airfryer" OR "kahve makinesi" lang:tr',
-    '"indirim kodu" OR "kupon kodu" OR "dip fiyat" lang:tr',
-    '"parfüm önerisi" OR "şampuan" OR "kozmetik indirim" lang:tr',
+_X_SNIPER_TARGETS = [
+    (
+        '"kulaklık önerisi" OR "bluetooth kulaklık" OR "kulaklık lazım" -filter:replies lang:tr',
+        ("kulaklık", "airpods", "sennheiser", "anker", "jbl", "sony", "tuf h1", "lp80"),
+    ),
+    (
+        '"mouse önerisi" OR "oyuncu mouse" OR "kablosuz mouse" -filter:replies lang:tr',
+        ("mouse", "logitech", "razer", "rampage", "steelseries"),
+    ),
+    (
+        '"monitör önerisi" OR "gaming monitör" -filter:replies lang:tr',
+        ("monitör", "monitor", "ips", "oled", "ultragear", "tuf gaming vg"),
+    ),
+    (
+        '"güneş kremi" OR "nemlendirici" OR "cerave" OR "la roche" -filter:replies lang:tr',
+        ("cilt", "dermokozmetik", "cerave", "la roche", "bioderma", "krem", "serum", "kozmetik"),
+    ),
+    (
+        '"kahve makinesi" OR "espresso" OR "termos" OR "airfryer" -filter:replies lang:tr',
+        ("kahve", "espresso", "termos", "stanley", "philips", "mutfak"),
+    ),
+    (
+        '"laptop önerisi" OR "bilgisayar önerisi" -filter:replies lang:tr',
+        ("laptop", "dizüstü", "ryzen", "rtx", "ideapad", "zenbook", "cyborg", "omen"),
+    ),
 ]
 
+_SNIPER_HISTORY_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "posted_history.json")
+SNIPER_REPLY_COOLDOWN_SECONDS = 1500  # 25 minutes anti-ban cooldown between Sniper Replies
 
-def engage_targeted_x_shoppers(settings: Dict[str, str], max_likes: int = 2) -> Dict[str, Any]:
+
+def _pick_matching_deal_for_sniper(deals: list, keywords: tuple) -> Dict[str, Any]:
+    best = []
+    for d in deals:
+        if "amazon.com.tr/dp/" not in str(d.get("url") or ""):
+            continue
+        hay = ((d.get("title") or "") + " " + (d.get("category") or "")).lower()
+        if any(k in hay for k in keywords):
+            best.append(d)
+    if not best:
+        best = [d for d in deals if "amazon.com.tr/dp/" in str(d.get("url") or "")]
+    best.sort(key=lambda x: float(x.get("discount_pct") or 0), reverse=True)
+    return best[0] if best else {}
+
+
+def _build_sniper_reply_text(deal: Dict[str, Any]) -> str:
+    raw_title = (deal.get("title") or "Fırsat Ürünü").strip()
+    short_title = raw_title[:48].rstrip() + ("..." if len(raw_title) > 48 else "")
+    price_str = format_tl(float(deal.get("cheapest_price") or 0))
+    second_str = format_tl(float(deal.get("second_price") or 0))
+    disc = float(deal.get("discount_pct") or 0)
+    variant = int(time.time()) % 3
+    if variant == 0:
+        return (
+            f"Şu an Amazon TR'de {short_title} diğer mağazalara göre %{disc:.0f} daha ucuza ({price_str}) düştü, "
+            f"stokta aktif duruyor. Profildeki son paylaşımlarda direkt linki var, bakabilirsin."
+        )
+    if variant == 1:
+        return (
+            f"Fiyat/performans olarak {short_title} şu an Amazon'da {price_str} seviyesine indi "
+            f"(piyasada {second_str} bandında, %{disc:.0f} avantaj var). Düşünürsen profildeki akışta paylaştık."
+        )
+    return (
+        f"İhtiyacın varsa {short_title} şu an Amazon TR üzerinde %{disc:.0f} fiyat farkıyla {price_str}'ye düştü. "
+        f"Stok bitmeden profildeki son paylaşımdan veya t.me/vurgunradari kanalından inceleyebilirsin."
+    )
+
+
+def engage_targeted_x_shoppers(
+    settings: Dict[str, str],
+    deals: list = None,
+    max_likes: int = 2,
+    force_reply: bool = False,
+) -> Dict[str, Any]:
     """
-    Organic user acquisition engine: searches X Live feed (f=live) for real Turkish shoppers
-    currently asking for product recommendations or discounts, and likes up to `max_likes` posts
-    so they receive a notification from @vurgunradari and visit our profile / Telegram channel.
+    Organic user acquisition engine + Sniper Reply:
+    1) Searches X Live feed (f=live) for real Turkish shoppers asking for product recommendations.
+    2) Likes up to `max_likes` posts.
+    3) Writes 1 contextual, link-free Sniper Reply recommending our matching live Amazon TR deal
+       (rate-limited to 1 reply per 25 minutes to keep the account 100% safe from spam filters).
     """
     auth_token = (settings.get("x_auth_token") or os.environ.get("X_AUTH_TOKEN") or "").strip()
     clean_auth = re.sub(r"[^a-fA-F0-9]", "", auth_token)
@@ -771,7 +836,23 @@ def engage_targeted_x_shoppers(settings: Dict[str, str], max_likes: int = 2) -> 
     if not chrome_bin:
         return {"ok": False, "error": "Chrome bulunamadı."}
 
-    query = _X_SHOPPER_QUERIES[int(time.time() // 90) % len(_X_SHOPPER_QUERIES)]
+    # Load sniper history (replied_status_ids & last_sniper_reply_ts)
+    hist_data: Dict[str, Any] = {}
+    try:
+        if os.path.isfile(_SNIPER_HISTORY_PATH):
+            with open(_SNIPER_HISTORY_PATH, "r", encoding="utf-8") as f:
+                hist_data = json.load(f)
+    except Exception:
+        hist_data = {}
+
+    replied_ids = set(hist_data.get("replied_status_ids") or [])
+    last_reply_ts = int(hist_data.get("last_sniper_reply_ts") or 0)
+    now_ts = int(time.time())
+    can_reply = force_reply or ((now_ts - last_reply_ts) >= SNIPER_REPLY_COOLDOWN_SECONDS)
+
+    idx = int(now_ts // 90) % len(_X_SNIPER_TARGETS)
+    query, cat_keywords = _X_SNIPER_TARGETS[idx]
+    matched_deal = _pick_matching_deal_for_sniper(deals or [], cat_keywords) if deals else {}
     search_url = "https://x.com/search?q=" + urllib.parse.quote(query) + "&src=typed_query&f=live"
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s_port:
@@ -831,16 +912,34 @@ def engage_targeted_x_shoppers(settings: Dict[str, str], max_likes: int = 2) -> 
         _cdp_send(sock, 3, "Page.navigate", {"url": search_url})
         time.sleep(6.5)
 
+        replied_js_list = json.dumps(list(replied_ids))
         js_engage = f"""
         (async () => {{
-            const likeBtns = Array.from(document.querySelectorAll('[data-testid="like"]')).slice(0, {int(max_likes)});
+            const seen = new Set({replied_js_list});
+            const articles = Array.from(document.querySelectorAll('article[data-testid="tweet"]'));
             let liked = 0;
-            for (const b of likeBtns) {{
-                b.click();
-                liked++;
-                await new Promise(r => setTimeout(r, 1400));
+            let targetStatusId = "";
+            let targetUser = "";
+            for (const art of articles) {{
+                const links = Array.from(art.querySelectorAll('a[href*="/status/"]')).map(a => a.getAttribute("href"));
+                const stLink = links.find(h => /^\\/[A-Za-z0-9_]+\\/status\\/\\d+$/.test(h || ""));
+                if (!stLink) continue;
+                const parts = stLink.split("/");
+                const user = (parts[1] || "").toLowerCase();
+                const sid = parts[3] || "";
+                if (!sid || user === "vurgunradari" || seen.has(sid)) continue;
+                const likeBtn = art.querySelector('[data-testid="like"]');
+                if (likeBtn && liked < {int(max_likes)}) {{
+                    likeBtn.click();
+                    liked++;
+                    await new Promise(r => setTimeout(r, 1200));
+                }}
+                if (!targetStatusId) {{
+                    targetStatusId = sid;
+                    targetUser = user;
+                }}
             }}
-            return "liked:" + liked;
+            return JSON.stringify({{liked, targetStatusId, targetUser}});
         }})()
         """
         eval_res = _cdp_send(
@@ -849,8 +948,57 @@ def engage_targeted_x_shoppers(settings: Dict[str, str], max_likes: int = 2) -> 
             "Runtime.evaluate",
             {"expression": js_engage, "awaitPromise": True, "returnByValue": True},
         )
-        val = str(((eval_res.get("result") or {}).get("result") or {}).get("value") or "")
-        return {"ok": val.startswith("liked:"), "query": query, "result": val}
+        raw_val = str(((eval_res.get("result") or {}).get("result") or {}).get("value") or "{}")
+        parsed_eng = json.loads(raw_val) if raw_val.startswith("{") else {}
+        target_sid = str(parsed_eng.get("targetStatusId") or "")
+        target_user = str(parsed_eng.get("targetUser") or "")
+
+        reply_sent = False
+        reply_text = ""
+        if can_reply and target_sid and matched_deal:
+            reply_text = _build_sniper_reply_text(matched_deal)
+            intent_reply_url = (
+                f"https://x.com/intent/post?in_reply_to={urllib.parse.quote(target_sid)}"
+                f"&text={urllib.parse.quote(reply_text)}"
+            )
+            _cdp_send(sock, 5, "Page.navigate", {"url": intent_reply_url})
+            time.sleep(6.0)
+            js_send_reply = """
+            (async () => {
+                const btn = document.querySelector('[data-testid="tweetButton"]');
+                if (!btn) return "no_btn";
+                btn.click();
+                await new Promise(r => setTimeout(r, 3200));
+                return "replied:" + location.href;
+            })()
+            """
+            rep_eval = _cdp_send(
+                sock,
+                6,
+                "Runtime.evaluate",
+                {"expression": js_send_reply, "awaitPromise": True, "returnByValue": True},
+            )
+            rep_val = str(((rep_eval.get("result") or {}).get("result") or {}).get("value") or "")
+            if rep_val.startswith("replied:"):
+                reply_sent = True
+                replied_ids.add(target_sid)
+                hist_data["replied_status_ids"] = sorted(replied_ids)[-200:]
+                hist_data["last_sniper_reply_ts"] = int(time.time())
+                try:
+                    with open(_SNIPER_HISTORY_PATH, "w", encoding="utf-8") as f:
+                        json.dump(hist_data, f, ensure_ascii=False, indent=2)
+                except Exception:
+                    pass
+
+        return {
+            "ok": True,
+            "query": query,
+            "liked": parsed_eng.get("liked", 0),
+            "sniper_reply_sent": reply_sent,
+            "target_user": target_user,
+            "target_status_id": target_sid,
+            "reply_text": reply_text,
+        }
     except Exception as exc:
         return {"ok": False, "error": str(exc)}
     finally:
