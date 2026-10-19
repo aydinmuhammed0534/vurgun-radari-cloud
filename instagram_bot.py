@@ -155,12 +155,30 @@ def post_deal_story(deal: Dict[str, Any], image_path: str, settings: Dict[str, s
         except Exception as e:
             logger.warning(f"Failed to create StoryLink: {e}")
 
+    polls = []
+    try:
+        from instagrapi.types import StoryPoll
+        polls.append(
+            StoryPoll(
+                question="Bu fiyata çökülür mü? 🔥",
+                options=[{"text": "Çök 🚀"}, {"text": "Pas ❌"}],
+                x=0.5,
+                y=0.88,
+                width=0.55,
+                height=0.10,
+            )
+        )
+    except Exception as pe:
+        logger.debug(f"Poll sticker notice: {pe}")
+
     try:
         kwargs = {}
         if links:
             kwargs["links"] = links
+        if polls:
+            kwargs["polls"] = polls
         media = cl.photo_upload_to_story(image_path, **kwargs)
-        logger.info(f"Story uploaded successfully with link sticker! Media ID: {media.pk}")
+        logger.info(f"Story uploaded successfully with link + poll sticker! Media ID: {media.pk}")
 
         # Automatically add story to "⚡️ Sıcak Fırsatlar" Highlight
         try:
@@ -176,12 +194,18 @@ def post_deal_story(deal: Dict[str, Any], image_path: str, settings: Dict[str, s
         return {"ok": True, "media_id": media.pk}
     except Exception as e:
         logger.error(f"Story upload error: {e}")
+        # Fallback without polls
         if links:
             try:
-                media = cl.photo_upload_to_story(image_path)
+                media = cl.photo_upload_to_story(image_path, links=links)
                 return {"ok": True, "media_id": media.pk}
             except Exception:
                 pass
+        try:
+            media = cl.photo_upload_to_story(image_path)
+            return {"ok": True, "media_id": media.pk}
+        except Exception:
+            pass
         if "login_required" in str(e).lower():
             _client_instance = None
         return {"ok": False, "error": str(e)}
@@ -376,6 +400,35 @@ def run_targeted_growth_loop(
                 "unfollowed": False,
             }
 
+    # 4.5 Live Comment Liker Sniper (Likes real active comments on latest hub post)
+    comment_liked_list = []
+    DAILY_MAX_COMMENT_LIKES = 150
+    daily.setdefault("comment_likes", 0)
+    if daily["comment_likes"] < DAILY_MAX_COMMENT_LIKES:
+        try:
+            if medias:
+                recent_comments = cl.media_comments(medias[0].id, amount=6)
+                for rc in recent_comments:
+                    if len(comment_liked_list) >= 4:
+                        break
+                    rc_pk_str = f"c_{rc.pk}"
+                    if rc_pk_str in engaged:
+                        continue
+                    if str(cl.user_id) == str(rc.user.pk):
+                        continue
+                    try:
+                        ok_c = cl.comment_like(rc.pk)
+                        if ok_c:
+                            daily["comment_likes"] += 1
+                            comment_liked_list.append(rc.user.username)
+                            engaged[rc_pk_str] = {"username": rc.user.username, "ts": now, "action": "comment_like"}
+                            logger.info(f"Liked comment by @{rc.user.username} on @{target['username']}")
+                            time.sleep(random.uniform(2.5, 5.0))
+                    except Exception:
+                        pass
+        except Exception as ce:
+            logger.debug(f"Comment liker notice: {ce}")
+
     # 5. Safe Auto-Unfollow Cleanup (protects follower/following ratio)
     try:
         my_info = cl.user_info(cl.user_id)
@@ -413,6 +466,8 @@ def run_targeted_growth_loop(
         "story_liked": story_liked_list,
         "liked_count": len(liked_list),
         "liked": liked_list,
+        "comment_liked_count": len(comment_liked_list),
+        "comment_liked": comment_liked_list,
         "unfollowed": unfollowed_list,
         "today_stats": daily,
     }

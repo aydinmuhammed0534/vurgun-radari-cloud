@@ -510,15 +510,107 @@
       "action": "post_like",
       "target_hub": "firsatnobeti",
       "unfollowed": false
+    },
+    "73497655146": {
+      "username": "alasahinrecep",
+      "ts": 1792434419,
+      "action": "follow",
+      "target_hub": "firsatnobeti",
+      "unfollowed": false
+    },
+    "65143236746": {
+      "username": "oguzhan5538",
+      "ts": 1792434419,
+      "action": "follow",
+      "target_hub": "firsatnobeti",
+      "unfollowed": false
+    },
+    "4779001175": {
+      "username": "surucu.erol",
+      "ts": 1792434419,
+      "action": "follow",
+      "target_hub": "firsatnobeti",
+      "unfollowed": false
+    },
+    "62353679658": {
+      "username": "ozcannazmi98",
+      "ts": 1792434419,
+      "action": "follow",
+      "target_hub": "firsatnobeti",
+      "unfollowed": false
+    },
+    "16767572815": {
+      "username": "akarsu3861",
+      "ts": 1792434419,
+      "action": "follow",
+      "target_hub": "firsatnobeti",
+      "unfollowed": false
+    },
+    "62666174879": {
+      "username": "halilibrahim8215",
+      "ts": 1792434419,
+      "action": "follow",
+      "target_hub": "firsatnobeti",
+      "unfollowed": false
+    },
+    "6172077034": {
+      "username": "seniyeari",
+      "ts": 1792434419,
+      "action": "post_like",
+      "target_hub": "firsatnobeti",
+      "unfollowed": false
+    },
+    "5613847810": {
+      "username": "esrefelgeni",
+      "ts": 1792434419,
+      "action": "post_like",
+      "target_hub": "firsatnobeti",
+      "unfollowed": false
+    },
+    "48339502787": {
+      "username": "unvanlieyyup",
+      "ts": 1792434419,
+      "action": "post_like",
+      "target_hub": "firsatnobeti",
+      "unfollowed": false
+    },
+    "56487727564": {
+      "username": "keramettin8831",
+      "ts": 1792434783,
+      "action": "follow+story_like",
+      "target_hub": "trendyolcom",
+      "unfollowed": false
+    },
+    "68305687619": {
+      "username": "gonca.aydemir.92",
+      "ts": 1792434783,
+      "action": "follow+story_like+post_like",
+      "target_hub": "trendyolcom",
+      "unfollowed": false
+    },
+    "38783983181": {
+      "username": "kiraliekrem",
+      "ts": 1792434783,
+      "action": "follow+post_like",
+      "target_hub": "trendyolcom",
+      "unfollowed": false
+    },
+    "6218318014": {
+      "username": "ahmetgoktepeliler",
+      "ts": 1792434783,
+      "action": "post_like",
+      "target_hub": "trendyolcom",
+      "unfollowed": false
     }
   },
   "daily_stats": {
     "2026-10-19": {
-      "follows": 28,
-      "likes": 14,
+      "follows": 37,
+      "likes": 20,
       "unfollows": 0,
-      "story_likes": 0
+      "story_likes": 2,
+      "comment_likes": 0
     }
   },
-  "last_run_ts": 1792434065
+  "last_run_ts": 1792434783
 }
