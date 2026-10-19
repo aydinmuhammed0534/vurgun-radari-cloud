@@ -143,14 +143,124 @@ def generate_deal_story(
     bg = Image.alpha_composite(bg, top_pill)
     draw = ImageDraw.Draw(bg)
 
-    # 3. Authentic Amazon Mobile App Screenshot Card (1920px wide)
+    # 3. Dynamic Height Amazon Mobile App Screenshot Card
     card_w = 1920
-    card_h = 2650
     card_x = (W - card_w) // 2
-    card_y = 330
+    card_y = 310
     card_rad = 54
 
-    # 3D Soft Drop Shadow
+    scratch = Image.new("RGBA", (card_w, 3200), (255, 255, 255, 255))
+    c_draw = ImageDraw.Draw(scratch)
+
+    # 3A. Header Bar inside Card (amazon.com.tr + prime)
+    font_amz_brand = load_font("bold", 64)
+    font_prime = load_font("bold", 48)
+
+    c_draw.text((80, 65), "amazon.com.tr", fill=(19, 25, 33), font=font_amz_brand)
+
+    prime_w, prime_h = 220, 66
+    prime_x = card_w - 80 - prime_w
+    prime_y = 66
+    c_draw.rounded_rectangle([(prime_x, prime_y), (prime_x + prime_w, prime_y + prime_h)], radius=14, fill=(0, 168, 225))
+    c_draw.text((prime_x + 38, prime_y + 8), "prime", fill=(255, 255, 255), font=font_prime)
+
+    c_draw.line([(80, 160), (card_w - 80, 160)], fill=(234, 237, 240), width=3)
+
+    # 3B. Product Photo (Direct from link - Big & Center)
+    photo_box_h = 1200
+    photo_box_w = card_w - 160
+    if product_image_path and os.path.exists(product_image_path):
+        p_img = Image.open(product_image_path).convert("RGBA")
+        p_img.thumbnail((photo_box_w, photo_box_h), Image.Resampling.LANCZOS)
+        pw, ph = p_img.size
+        px = (card_w - pw) // 2
+        py = 180 + (photo_box_h - ph) // 2
+        scratch.paste(p_img, (px, py), p_img if p_img.mode == "RGBA" else None)
+
+    photo_bottom = 180 + photo_box_h
+    c_draw.line([(80, photo_bottom + 15), (card_w - 80, photo_bottom + 15)], fill=(240, 242, 245), width=3)
+
+    # 3C. Product Title (Clear, 2 lines max with generous 84px line height)
+    font_prod_title = load_font("bold", 68)
+    clean_title = re.sub(r'[\(\[\{].*?[\)\]\}]', '', deal_title).strip()
+    if len(clean_title) > 75:
+        clean_title = clean_title[:75].rsplit(' ', 1)[0]
+
+    title_lines = textwrap.wrap(clean_title, width=36)
+    if len(title_lines) > 2:
+        title_lines = title_lines[:2]
+
+    curr_y = photo_bottom + 55
+    for t_line in title_lines:
+        c_draw.text((80, curr_y), t_line, fill=(15, 20, 25), font=font_prod_title)
+        curr_y += 84
+
+    # 3D. 5 Stars + Review Count
+    curr_y += 20
+    star_start_x = 105
+    star_y = curr_y + 24
+    for s_idx in range(5):
+        draw_star(c_draw, star_start_x + s_idx * 52, star_y, size=24, color=(255, 164, 28))
+
+    font_rev = load_font("regular", 48)
+    c_draw.text((star_start_x + 5 * 52 + 30, star_y - 25), "4.8 (1.942 değerlendirme)", fill=(0, 113, 133), font=font_rev)
+    curr_y += 85
+
+    # 3E. Price Area with Generous Spacing (ZERO OVERLAP!)
+    deal_pill_txt = f"- %{int(discount_pct)} Fırsat"
+    font_deal_pill = load_font("bold", 60)
+    dpb = c_draw.textbbox((0, 0), deal_pill_txt, font=font_deal_pill)
+    dpw, dph = dpb[2] - dpb[0], dpb[3] - dpb[1]
+    pill_pad_x, pill_pad_y = 36, 14
+    pill_w = dpw + pill_pad_x * 2
+    pill_h = dph + pill_pad_y * 2
+    c_draw.rounded_rectangle([(80, curr_y), (80 + pill_w, curr_y + pill_h)], radius=12, fill=(204, 12, 57))
+    c_draw.text((80 + pill_pad_x, curr_y + pill_pad_y - 2), deal_pill_txt, fill=(255, 255, 255), font=font_deal_pill)
+
+    # Price sits CLEANLY below the pill with 45px clear space
+    curr_y += pill_h + 45
+    font_price_main = load_font("condensed", 270)
+    price_val = float(deal_price)
+    if price_val >= 10000 or price_val == int(price_val):
+        price_str = f"{int(price_val):,} TL".replace(',', '.')
+    else:
+        price_str = f"{price_val:,.2f} TL".replace(',', 'X').replace('.', ',').replace('X', '.')
+
+    pr_box = c_draw.textbbox((80, curr_y), price_str, font=font_price_main)
+    pr_h = pr_box[3] - pr_box[1]
+    c_draw.text((80, curr_y), price_str, fill=(15, 17, 17), font=font_price_main)
+    curr_y += pr_h + 40
+
+    # Strikethrough Market Price (Single font, perfect baseline alignment!)
+    font_strike = load_font("regular", 56)
+    m_price_val = float(market_price)
+    pfx = "Tavsiye Edilen Satış Fiyatı: "
+    val_part = f"{int(m_price_val):,} TL".replace(',', '.')
+    full_str = pfx + val_part
+
+    c_draw.text((80, curr_y), full_str, fill=(86, 89, 89), font=font_strike)
+
+    pfx_box = c_draw.textbbox((80, curr_y), pfx, font=font_strike)
+    val_box = c_draw.textbbox((pfx_box[2], curr_y), val_part, font=font_strike)
+    strike_mid_y = (val_box[1] + val_box[3]) // 2 + 1
+    c_draw.line([(val_box[0] - 6, strike_mid_y), (val_box[2] + 6, strike_mid_y)], fill=(204, 12, 57), width=5)
+    curr_y += (val_box[3] - val_box[1]) + 45
+
+    # Green Delivery & Seller badge (NO UNICODE GLYPH ERRORS!)
+    font_stock = load_font("bold", 54)
+    font_seller = load_font("regular", 48)
+    c_draw.text((80, curr_y), "Stokta Var  •  Ücretsiz Hızlı Kargo", fill=(0, 118, 0), font=font_stock)
+    curr_y += 72
+    c_draw.text((80, curr_y), "Gönderici ve Satıcı: Amazon.com.tr", fill=(86, 89, 89), font=font_seller)
+    curr_y += 75
+
+    # Final Card Bottom Padding
+    card_h = curr_y + 40
+
+    # Crop the exact card from scratch
+    amz_card = scratch.crop((0, 0, card_w, card_h))
+
+    # Apply shadow with dynamic height
     shadow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     s_draw = ImageDraw.Draw(shadow)
     s_draw.rounded_rectangle(
@@ -161,121 +271,16 @@ def generate_deal_story(
     shadow = shadow.filter(ImageFilter.GaussianBlur(60))
     bg = Image.alpha_composite(bg, shadow)
 
-    # Card base: Pure Amazon Mobile App White
-    amz_card = Image.new("RGBA", (card_w, card_h), (255, 255, 255, 255))
-    c_draw = ImageDraw.Draw(amz_card)
-
-    # 3A. Header Bar inside Card
-    font_amz_brand = load_font("bold", 62)
-    font_prime = load_font("bold", 46)
-
-    # amazon.com.tr
-    c_draw.text((80, 65), "amazon.com.tr", fill=(19, 25, 33), font=font_amz_brand)
-
-    # Prime cyan badge
-    prime_w, prime_h = 210, 62
-    prime_x = card_w - 80 - prime_w
-    prime_y = 66
-    c_draw.rounded_rectangle([(prime_x, prime_y), (prime_x + prime_w, prime_y + prime_h)], radius=14, fill=(0, 168, 225))
-    c_draw.text((prime_x + 36, prime_y + 8), "prime", fill=(255, 255, 255), font=font_prime)
-
-    # Clean divider
-    c_draw.line([(80, 155), (card_w - 80, 155)], fill=(234, 237, 240), width=3)
-
-    # 3B. Real Product Photo (Direct from link - Huge & Crisp!)
-    photo_box_h = 1180
-    photo_box_w = card_w - 160
-    if product_image_path and os.path.exists(product_image_path):
-        p_img = Image.open(product_image_path).convert("RGBA")
-        p_img.thumbnail((photo_box_w, photo_box_h), Image.Resampling.LANCZOS)
-        pw, ph = p_img.size
-        px = (card_w - pw) // 2
-        py = 185 + (photo_box_h - ph) // 2
-        amz_card.paste(p_img, (px, py), p_img if p_img.mode == "RGBA" else None)
-
-    # Divider below photo
-    c_draw.line([(80, 1400), (card_w - 80, 1400)], fill=(240, 242, 245), width=3)
-
-    # 3C. Product Title (Properly wrapped without cutoffs or overlaps)
-    font_prod_title = load_font("bold", 64)
-    clean_title = re.sub(r'[\(\[\{].*?[\)\]\}]', '', deal_title).strip()
-    if len(clean_title) > 75:
-        clean_title = clean_title[:75].rsplit(' ', 1)[0]
-
-    title_lines = textwrap.wrap(clean_title, width=38)
-    if len(title_lines) > 2:
-        title_lines = title_lines[:2]
-
-    curr_title_y = 1435
-    for t_line in title_lines:
-        c_draw.text((80, curr_title_y), t_line, fill=(15, 20, 25), font=font_prod_title)
-        curr_title_y += 76
-
-    # 3D. 5 Stars (Drawn cleanly with PIL) + Rating
-    star_start_x = 100
-    star_y = curr_title_y + 40
-    for s_idx in range(5):
-        draw_star(c_draw, star_start_x + s_idx * 50, star_y, size=21, color=(255, 164, 28))
-
-    font_rev = load_font("regular", 46)
-    c_draw.text((star_start_x + 5 * 50 + 26, star_y - 23), "4.8 (1.942 değerlendirme)", fill=(0, 113, 133), font=font_rev)
-
-    # 3E. Amazon Price Box
-    box_y = star_y + 60
-
-    # Red Amazon Deal Pill: "-%XX Fırsat"
-    deal_pill_txt = f"- %{int(discount_pct)} Fırsat"
-    font_deal_pill = load_font("bold", 62)
-    dpb = c_draw.textbbox((0, 0), deal_pill_txt, font=font_deal_pill)
-    dpw, dph = dpb[2] - dpb[0], dpb[3] - dpb[1]
-    c_draw.rounded_rectangle([(80, box_y), (80 + dpw + 40, box_y + dph + 24)], radius=12, fill=(204, 12, 57))
-    c_draw.text((100, box_y + 11), deal_pill_txt, fill=(255, 255, 255), font=font_deal_pill)
-
-    # Super Bold Amazon Deal Price: 5.879 TL
-    price_y = box_y + dph + 44
-    font_price_main = load_font("condensed", 240)
-
-    price_val = float(deal_price)
-    if price_val >= 10000 or price_val == int(price_val):
-        price_str = f"{int(price_val):,} TL".replace(',', '.')
-    else:
-        price_str = f"{price_val:,.2f} TL".replace(',', 'X').replace('.', ',').replace('X', '.')
-
-    c_draw.text((80, price_y), price_str, fill=(15, 17, 17), font=font_price_main)
-
-    # Strikethrough Market Price: "Tavsiye Edilen Fiyat: 7.290 TL"
-    m_price_val = float(market_price)
-    strike_label = "Tavsiye Edilen Satış Fiyatı: "
-    strike_price = f"{int(m_price_val):,} TL".replace(',', '.')
-    font_strike = load_font("regular", 54)
-    font_strike_bold = load_font("bold", 54)
-
-    sl_b = c_draw.textbbox((0, 0), strike_label, font=font_strike)
-    sl_w = sl_b[2] - sl_b[0]
-    sp_b = c_draw.textbbox((0, 0), strike_price, font=font_strike_bold)
-    sp_w, sp_h = sp_b[2] - sp_b[0], sp_b[3] - sp_b[1]
-
-    strike_y = price_y + 245
-    c_draw.text((80, strike_y), strike_label, fill=(86, 89, 89), font=font_strike)
-    c_draw.text((80 + sl_w, strike_y), strike_price, fill=(86, 89, 89), font=font_strike_bold)
-
-    # Clean red horizontal line crossing out the price value
-    c_draw.line([(80 + sl_w - 6, strike_y + sp_h // 2 + 2), (80 + sl_w + sp_w + 6, strike_y + sp_h // 2 + 2)], fill=(204, 12, 57), width=6)
-
-    # Green Delivery badge
-    font_stock = load_font("bold", 52)
-    font_seller = load_font("regular", 46)
-    stock_y = strike_y + sp_h + 40
-    c_draw.text((80, stock_y), "Stokta Var • Ücretsiz Hızlı Kargo", fill=(0, 118, 0), font=font_stock)
-    c_draw.text((80, stock_y + 60), "Gönderici ve Satıcı: Amazon.com.tr", fill=(86, 89, 89), font=font_seller)
-
-    # Apply card mask
+    # Mask card into rounded rectangle
     mask = Image.new("L", (card_w, card_h), 0)
     ImageDraw.Draw(mask).rounded_rectangle([(0, 0), (card_w, card_h)], radius=card_rad, fill=255)
     bg.paste(amz_card, (card_x, card_y), mask)
     draw = ImageDraw.Draw(bg)
 
-    # 4. Bottom Area (Previous template clean white button)
+    # 4. Bottom Area (High-contrast white button & footer branding)
+    btn_gap = 100
+    btn_y = card_y + card_h + btn_gap
+
     font_btn = load_font("bold", 82)
     btn_txt = "Fırsatı Yakala"
     bb = draw.textbbox((0, 0), btn_txt, font=font_btn)
@@ -283,7 +288,6 @@ def generate_deal_story(
     btn_w = bw + 240
     btn_h = bh + 96
     btn_x = (W - btn_w) // 2
-    btn_y = card_y + card_h + 120
     btn_rad = btn_h // 2
 
     # Button shadow
