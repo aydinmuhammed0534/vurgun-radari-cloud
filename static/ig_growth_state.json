@@ -601,16 +601,234 @@
       "action": "post_like",
       "target_hub": "trendyolcom",
       "unfollowed": false
+    },
+    "30550457342": {
+      "username": "sunduz.ozturk.14",
+      "ts": 1792435665,
+      "action": "post_like",
+      "target_hub": "firsatatikla",
+      "unfollowed": false
+    },
+    "77641983505": {
+      "username": "hamide78329",
+      "ts": 1792435665,
+      "action": "post_like",
+      "target_hub": "firsatatikla",
+      "unfollowed": false
+    },
+    "1547931906": {
+      "username": "muhlisx",
+      "ts": 1792435665,
+      "action": "follow",
+      "target_hub": "firsatatikla",
+      "unfollowed": false
+    },
+    "6970617931": {
+      "username": "katmesut4561",
+      "ts": 1792435665,
+      "action": "follow+post_like",
+      "target_hub": "firsatatikla",
+      "unfollowed": false
+    },
+    "1530297839": {
+      "username": "asuman.ozzdemir",
+      "ts": 1792435665,
+      "action": "post_like",
+      "target_hub": "firsatatikla",
+      "unfollowed": false
+    },
+    "47353580098": {
+      "username": "nesibekoc6",
+      "ts": 1792435665,
+      "action": "post_like",
+      "target_hub": "firsatatikla",
+      "unfollowed": false
+    },
+    "15505302274": {
+      "username": "erdem60547",
+      "ts": 1792436002,
+      "action": "follow",
+      "target_hub": "firsatcik",
+      "unfollowed": false
+    },
+    "43158762186": {
+      "username": "erdal.erdal.10004694",
+      "ts": 1792436002,
+      "action": "follow+post_like",
+      "target_hub": "firsatcik",
+      "unfollowed": false
+    },
+    "75814803942": {
+      "username": "erdal.ozdemir.7524879",
+      "ts": 1792436002,
+      "action": "follow",
+      "target_hub": "firsatcik",
+      "unfollowed": false
+    },
+    "65977744187": {
+      "username": "sahinn_19_",
+      "ts": 1792436002,
+      "action": "follow",
+      "target_hub": "firsatcik",
+      "unfollowed": false
+    },
+    "78622496383": {
+      "username": "beytullah190396",
+      "ts": 1792436002,
+      "action": "follow",
+      "target_hub": "firsatcik",
+      "unfollowed": false
+    },
+    "51609847749": {
+      "username": "ffatihyesilyurt",
+      "ts": 1792436002,
+      "action": "follow+story_like+post_like",
+      "target_hub": "firsatcik",
+      "unfollowed": false
+    },
+    "65213415053": {
+      "username": "misadopremsi",
+      "ts": 1792436002,
+      "action": "story_like",
+      "target_hub": "firsatcik",
+      "unfollowed": false
+    },
+    "69536955950": {
+      "username": "queenbluegirlll",
+      "ts": 1792436550,
+      "action": "follow",
+      "target_hub": "amazon.tr",
+      "unfollowed": false
+    },
+    "14674493450": {
+      "username": "suray04.07",
+      "ts": 1792436550,
+      "action": "follow+post_like",
+      "target_hub": "amazon.tr",
+      "unfollowed": false
+    },
+    "67213932216": {
+      "username": "goose.44747813",
+      "ts": 1792436550,
+      "action": "follow",
+      "target_hub": "amazon.tr",
+      "unfollowed": false
+    },
+    "70426212108": {
+      "username": "syr__ah27",
+      "ts": 1792436550,
+      "action": "follow+post_like",
+      "target_hub": "amazon.tr",
+      "unfollowed": false
+    },
+    "68012310300": {
+      "username": "rabiyrkoroglu",
+      "ts": 1792436550,
+      "action": "follow+story_like+post_like",
+      "target_hub": "amazon.tr",
+      "unfollowed": false
+    },
+    "37351585106": {
+      "username": "deryamood_",
+      "ts": 1792436550,
+      "action": "follow+story_like",
+      "target_hub": "amazon.tr",
+      "unfollowed": false
+    },
+    "76592103373": {
+      "username": "ya.g.z38.29",
+      "ts": 1792436550,
+      "action": "story_like",
+      "target_hub": "amazon.tr",
+      "unfollowed": false
+    },
+    "16436164440": {
+      "username": "_zeynab_130380",
+      "ts": 1792436550,
+      "action": "post_like",
+      "target_hub": "amazon.tr",
+      "unfollowed": false
+    },
+    "72051329506": {
+      "username": "tahsiekic",
+      "ts": 1792436550,
+      "action": "post_like",
+      "target_hub": "amazon.tr",
+      "unfollowed": false
+    },
+    "27907873354": {
+      "username": "mahmut_yarsi5",
+      "ts": 1792436550,
+      "action": "story_like",
+      "target_hub": "amazon.tr",
+      "unfollowed": false
+    },
+    "13127569203": {
+      "username": "vira.bismillahh",
+      "ts": 1792436550,
+      "action": "post_like",
+      "target_hub": "amazon.tr",
+      "unfollowed": false
+    },
+    "73933163172": {
+      "username": "mehmet196741",
+      "ts": 1792437316,
+      "action": "follow",
+      "target_hub": "firsatnobeti",
+      "unfollowed": false
+    },
+    "40141301408": {
+      "username": "adalet_8519_ozkan",
+      "ts": 1792437316,
+      "action": "follow",
+      "target_hub": "firsatnobeti",
+      "unfollowed": false
+    },
+    "80651330708": {
+      "username": "memo_4733bozkurt",
+      "ts": 1792437316,
+      "action": "follow",
+      "target_hub": "firsatnobeti",
+      "unfollowed": false
+    },
+    "4227778118": {
+      "username": "acikkayamehmet",
+      "ts": 1792437316,
+      "action": "follow",
+      "target_hub": "firsatnobeti",
+      "unfollowed": false
+    },
+    "68936041927": {
+      "username": "tanyeri.ayfer",
+      "ts": 1792437316,
+      "action": "follow+post_like",
+      "target_hub": "firsatnobeti",
+      "unfollowed": false
+    },
+    "54198996283": {
+      "username": "temurelife",
+      "ts": 1792437316,
+      "action": "follow",
+      "target_hub": "firsatnobeti",
+      "unfollowed": false
+    },
+    "41620035675": {
+      "username": "kristalbosforus",
+      "ts": 1792437316,
+      "action": "post_like",
+      "target_hub": "firsatnobeti",
+      "unfollowed": false
     }
   },
   "daily_stats": {
     "2026-10-19": {
-      "follows": 37,
-      "likes": 20,
+      "follows": 57,
+      "likes": 35,
       "unfollows": 0,
-      "story_likes": 2,
+      "story_likes": 8,
       "comment_likes": 0
     }
   },
-  "last_run_ts": 1792434783
+  "last_run_ts": 1792437316,
+  "rest_until": 1792481240
 }

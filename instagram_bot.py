@@ -269,15 +269,25 @@ def _save_growth_state(state: Dict[str, Any]) -> None:
 
 def run_targeted_growth_loop(
     settings: Dict[str, str],
-    max_follows: int = 6,
-    max_likes: int = 6,
-    cooldown_seconds: int = 300,
+    max_follows: int = 2,
+    max_likes: int = 2,
+    cooldown_seconds: int = 1800,
     force: bool = False,
 ) -> Dict[str, Any]:
     """
-    Safely and aggressively acquires high-intent Turkish shoppers from major deal & Amazon pages.
-    Drives profile visits, story views, and affiliate conversions with human-jitter delays & anti-ban caps.
+    Anti-Captcha Protected Growth Loop:
+    - Strictly blocks datacenter cloud execution to prevent IP-clash CAPTCHAs.
+    - Operates at calm, human-like pacing (max 2 follows per 30m, 20-35s delays).
+    - Enforces automatic 24-hour resting lock if any challenge is flagged.
     """
+    # 0. Datacenter Anti-Captcha Guard: NEVER run follow/likes from GitHub Actions cloud IPs!
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        return {
+            "ok": True,
+            "status": "cloud_growth_skipped",
+            "message": "Outbound growth actions are disabled on datacenter runners to protect account safety.",
+        }
+
     cl = get_instagram_client(settings)
     if not cl:
         return {"ok": False, "error": "Instagram oturumu aktif değil."}
@@ -285,6 +295,13 @@ def run_targeted_growth_loop(
     now = int(time.time())
     today_key = time.strftime("%Y-%m-%d")
     state = _load_growth_state()
+
+    # Rest lock check (if checkpoint was hit recently)
+    rest_until = int(state.get("rest_until", 0))
+    if now < rest_until:
+        hours_left = round((rest_until - now) / 3600, 1)
+        logger.info(f"Instagram safety shield active. Resting for another {hours_left} hours.")
+        return {"ok": True, "status": "safety_resting", "hours_remaining": hours_left}
 
     # 1. Cooldown check
     last_run = int(state.get("last_run_ts", 0))
@@ -299,19 +316,19 @@ def run_targeted_growth_loop(
         today_key, {"follows": 0, "likes": 0, "unfollows": 0}
     )
 
-    # 2. Strict 24h anti-ban limits (calibrated for high-velocity safe growth)
-    DAILY_MAX_FOLLOWS = 140
-    DAILY_MAX_LIKES = 150
-    DAILY_MAX_STORY_LIKES = 150
+    # 2. Strict ultra-safe human limits to guarantee NO CAPTCHAs
+    DAILY_MAX_FOLLOWS = 25
+    DAILY_MAX_LIKES = 30
+    DAILY_MAX_STORY_LIKES = 30
 
     daily.setdefault("story_likes", 0)
     if daily["follows"] >= DAILY_MAX_FOLLOWS and daily["likes"] >= DAILY_MAX_LIKES:
-        logger.info(f"Daily Instagram action limit reached for {today_key}. Resting.")
+        logger.info(f"Daily Instagram safe limit reached for {today_key}. Resting.")
         return {"ok": True, "status": "daily_limit_reached", "daily_stats": daily}
 
     # 3. Select target hub
     target = random.choice(TARGET_DEAL_HUBS)
-    logger.info(f"Sniping live online shoppers from @{target['username']}...")
+    logger.info(f"Gentle shopper engagement from @{target['username']}...")
 
     followed_list = []
     liked_list = []
@@ -367,14 +384,16 @@ def run_targeted_growth_loop(
                     daily["follows"] += 1
                     followed_this = True
                     logger.info(f"Followed live shopper @{u.username} (Today: {daily['follows']}/{DAILY_MAX_FOLLOWS})")
-                    time.sleep(random.uniform(5.0, 9.0))
+                    time.sleep(random.uniform(20.0, 35.0))
             except Exception as fe:
                 logger.warning(f"Follow error on @{u.username}: {fe}")
-                if "feedback_required" in str(fe).lower() or "challenge_required" in str(fe).lower():
-                    logger.error("Instagram safety barrier hit. Halting growth loop.")
+                err_str = str(fe).lower()
+                if "feedback_required" in err_str or "challenge_required" in err_str or "checkpoint" in err_str:
+                    logger.error("Instagram safety barrier hit. Activating 24-hour sleep shield.")
+                    state["rest_until"] = now + 86400
                     break
 
-        # Touchpoint 2: Story Sniper (View + Like active 24h story -> instant red heart DM notification!)
+        # Touchpoint 2: Story View (gentle, safe)
         if daily["story_likes"] < DAILY_MAX_STORY_LIKES:
             try:
                 user_stories = cl.user_stories(pk)
@@ -386,7 +405,7 @@ def run_targeted_growth_loop(
                     story_liked_this = True
                     story_liked_list.append(u.username)
                     logger.info(f"Liked active story of @{u.username}! ❤️")
-                    time.sleep(random.uniform(4.0, 7.0))
+                    time.sleep(random.uniform(15.0, 25.0))
             except Exception:
                 pass
 
@@ -401,7 +420,7 @@ def run_targeted_growth_loop(
                     daily["likes"] += 1
                     liked_this = True
                     logger.info(f"Liked post of @{u.username} (Total likes today: {daily['likes']})")
-                    time.sleep(random.uniform(4.0, 8.0))
+                    time.sleep(random.uniform(15.0, 25.0))
             except Exception as le:
                 logger.warning(f"Like error on @{u.username}: {le}")
 
@@ -421,35 +440,6 @@ def run_targeted_growth_loop(
                 "target_hub": target["username"],
                 "unfollowed": False,
             }
-
-    # 4.5 Live Comment Liker Sniper (Likes real active comments on latest hub post)
-    comment_liked_list = []
-    DAILY_MAX_COMMENT_LIKES = 150
-    daily.setdefault("comment_likes", 0)
-    if daily["comment_likes"] < DAILY_MAX_COMMENT_LIKES:
-        try:
-            if medias:
-                recent_comments = cl.media_comments(medias[0].id, amount=6)
-                for rc in recent_comments:
-                    if len(comment_liked_list) >= 4:
-                        break
-                    rc_pk_str = f"c_{rc.pk}"
-                    if rc_pk_str in engaged:
-                        continue
-                    if str(cl.user_id) == str(rc.user.pk):
-                        continue
-                    try:
-                        ok_c = cl.comment_like(rc.pk)
-                        if ok_c:
-                            daily["comment_likes"] += 1
-                            comment_liked_list.append(rc.user.username)
-                            engaged[rc_pk_str] = {"username": rc.user.username, "ts": now, "action": "comment_like"}
-                            logger.info(f"Liked comment by @{rc.user.username} on @{target['username']}")
-                            time.sleep(random.uniform(2.5, 5.0))
-                    except Exception:
-                        pass
-        except Exception as ce:
-            logger.debug(f"Comment liker notice: {ce}")
 
     # 5. Safe Auto-Unfollow Cleanup (protects follower/following ratio)
     try:
@@ -488,8 +478,6 @@ def run_targeted_growth_loop(
         "story_liked": story_liked_list,
         "liked_count": len(liked_list),
         "liked": liked_list,
-        "comment_liked_count": len(comment_liked_list),
-        "comment_liked": comment_liked_list,
         "unfollowed": unfollowed_list,
         "today_stats": daily,
     }
