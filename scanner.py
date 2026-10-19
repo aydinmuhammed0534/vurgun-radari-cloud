@@ -1,5 +1,7 @@
 import html
 import json
+import logging
+import os
 import re
 import subprocess
 import time
@@ -9,7 +11,7 @@ from typing import Any, Dict, List
 import db
 import notifier
 
-import os
+logger = logging.getLogger("Scanner")
 
 ALLOWED_URL_PREFIXES = (
     "https://www.cimri.com/",
