@@ -86,9 +86,9 @@ def build_viral_reels_caption(deal: Dict[str, Any], settings: Dict[str, str]) ->
     disc = int(float(deal.get("discount_pct", 0)))
 
     hooks = [
-        f"beyler amazon fiyatı resmen yarı yarıya çekmiş şaka gibi indirim var",
-        f"fena patlatmışlar normalde bu fiyata imkanı yok bulamazsınız",
-        f"böyle bir fiyat hatası yok ihtiyacı olan hiç beklemesin direkt çöksün",
+        "beyler amazon fiyatı resmen dibe çekmiş şaka gibi indirim var",
+        "fena patlatmışlar normalde bu fiyata imkanı yok bulamazsınız",
+        "böyle bir fiyat hatası yok ihtiyacı olan hiç beklemesin direkt çöksün",
         f"normalde {old_price:,} TL olan ürün şu an {price:,} TL'ye düşmüş bedavadan biraz pahalı".replace(',', '.'),
         f"stokları eritmeye çalışıyorlar herhalde fiyata gel (%{disc} indirim)"
     ]
@@ -96,12 +96,13 @@ def build_viral_reels_caption(deal: Dict[str, Any], settings: Dict[str, str]) ->
 
     lines = [
         f"{hook}\n",
-        f"ürün: {title}",
-        f"piyasa fiyatı: {old_price:,} TL".replace(',', '.'),
-        f"fırsat fiyatı: {price:,} TL (%{disc} indirim)\n".replace(',', '.'),
-        "yoruma 'link' yazın direkt dm'den atayım beyler 👇",
-        "stoklar anında bitiyor haberiniz olsun, kaçırmamak için takipte kalın.\n",
-        "#amazontr #indirim #fırsat #fiyathatası #vurgunradari #indirimhaberi"
+        f"📦 Ürün: {title}",
+        f"🏷 Piyasa Fiyatı: {old_price:,} TL".replace(',', '.'),
+        f"🔥 Vurgun Fiyatı: {price:,} TL (%{disc} İndirim)\n".replace(',', '.'),
+        "👉 Satın alma linki biyografideki Telegram kanalımızda sabitlendi! (t.me/vurgunradari)",
+        "👉 Hikayedeki link çıkartmasına tıklayarak da direkt Amazon'dan kapabilirsiniz.",
+        "⚡️ Fiyat hataları dakikalar içinde düzeliyor, kaçırmamak için takipte kalın!\n",
+        "#amazontr #indirim #fırsat #fiyathatası #vurgunradari #indirimhaberi #kampanya"
     ]
     return "\n".join(lines)
 
@@ -137,7 +138,7 @@ def post_deal_reels(deal: Dict[str, Any], video_path: str, settings: Dict[str, s
 
 
 def post_deal_story(deal: Dict[str, Any], image_path: str, settings: Dict[str, str]) -> Dict[str, Any]:
-    """Posts an image to Instagram Stories."""
+    """Posts an image to Instagram Stories with a clickable link sticker."""
     cl = get_instagram_client(settings)
     if not cl:
         return {"ok": False, "error": "Instagram oturumu açılamadı."}
@@ -145,14 +146,33 @@ def post_deal_story(deal: Dict[str, Any], image_path: str, settings: Dict[str, s
     if not os.path.exists(image_path):
         return {"ok": False, "error": f"Story görseli bulunamadı: {image_path}"}
 
+    links = []
+    affiliate_url = str(deal.get("url") or "").strip()
+    if affiliate_url.startswith("https://"):
+        try:
+            from instagrapi.types import StoryLink
+            links.append(StoryLink(webUri=affiliate_url))
+        except Exception as e:
+            logger.warning(f"Failed to create StoryLink: {e}")
+
     try:
-        media = cl.photo_upload_to_story(image_path)
-        logger.info(f"Story uploaded successfully! Media ID: {media.pk}")
+        kwargs = {}
+        if links:
+            kwargs["links"] = links
+        media = cl.photo_upload_to_story(image_path, **kwargs)
+        logger.info(f"Story uploaded successfully with link sticker! Media ID: {media.pk}")
         return {"ok": True, "media_id": media.pk}
     except Exception as e:
         logger.error(f"Story upload error: {e}")
+        if links:
+            try:
+                media = cl.photo_upload_to_story(image_path)
+                return {"ok": True, "media_id": media.pk}
+            except Exception:
+                pass
         if "login_required" in str(e).lower():
             _client_instance = None
+        return {"ok": False, "error": str(e)}
         return {"ok": False, "error": str(e)}
 
 

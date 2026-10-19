@@ -754,7 +754,9 @@ _POSTED_HISTORY_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 
 _in_memory_posted_asins: set = set()
 _in_memory_posted_titles: set = set()
 _last_post_epoch: int = 0
-MIN_POST_INTERVAL_SECONDS = 420  # 7 minutes steady interval (1 deal every ~7 mins, zero duplicates)
+_last_ig_post_epoch: int = 0
+MIN_POST_INTERVAL_SECONDS = 420  # 7 minutes steady interval for Telegram/X (1 deal every ~7 mins)
+MIN_IG_POST_INTERVAL_SECONDS = 9000  # 2.5 hours minimum between Instagram Reels (3-4 curated bangers/day)
 
 
 def _load_and_sync_channel_history(chat_id: str) -> int:
@@ -765,13 +767,14 @@ def _load_and_sync_channel_history(chat_id: str) -> int:
       2) Return the epoch timestamp of the latest message on the channel so neither
          local nor GitHub Cloud ever posts more than 1 deal per 7 minutes.
     """
-    global _last_post_epoch
+    global _last_post_epoch, _last_ig_post_epoch
     try:
         if os.path.isfile(_POSTED_HISTORY_PATH):
             with open(_POSTED_HISTORY_PATH, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 _in_memory_posted_asins.update(data.get("asins") or [])
                 _in_memory_posted_titles.update(data.get("titles") or [])
+                _last_ig_post_epoch = int(data.get("last_ig_post_epoch") or 0)
     except Exception:
         pass
 
@@ -808,6 +811,7 @@ def _save_posted_history() -> None:
                 hist_data = json.load(f)
         hist_data["asins"] = sorted(_in_memory_posted_asins)
         hist_data["titles"] = sorted(_in_memory_posted_titles)
+        hist_data["last_ig_post_epoch"] = _last_ig_post_epoch
         with open(_POSTED_HISTORY_PATH, "w", encoding="utf-8") as f:
             json.dump(hist_data, f, ensure_ascii=False, indent=2)
     except Exception:
@@ -935,12 +939,25 @@ def _dispatch_alerts(candidates_for_alert: List[Dict[str, Any]], settings: Dict[
         except Exception:
             pass
 
-        # If Instagram auto post enabled, publish Reels & Story
+        # Publish to Instagram Reels & Story ONLY if:
+        # 1. Instagram auto post is enabled
+        # 2. At least 2.5 hours passed since last Reel (giving Meta algorithm testing cohorts breathing room)
+        # 3. Deal is a viral follower-magnet banger (score >= 60.0)
         ig_enabled = str(settings.get("instagram_auto_post", "0")).strip() in ("1", "true")
-        if ig_enabled and mp4_path:
+        deal_score = score_deal_attractiveness(alert_deal)
+        can_post_ig = (
+            ig_enabled
+            and mp4_path
+            and ((now_ts - _last_ig_post_epoch) >= MIN_IG_POST_INTERVAL_SECONDS)
+            and (deal_score >= 60.0)
+        )
+        if can_post_ig:
             try:
                 import instagram_bot
-                instagram_bot.post_deal_reels(alert_deal, mp4_path, settings)
+                ig_res = instagram_bot.post_deal_reels(alert_deal, mp4_path, settings)
+                if ig_res.get("ok"):
+                    _last_ig_post_epoch = int(time.time())
+                    _save_posted_history()
                 if png_path:
                     instagram_bot.post_deal_story(alert_deal, png_path, settings)
             except Exception:
