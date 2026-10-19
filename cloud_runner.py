@@ -57,7 +57,16 @@ def main() -> None:
         res = scanner.run_full_scan(trigger_notifications=True)
         print("[Cloud Runner] Tam tarama sonucu:", res)
 
-    sniper_cycles = int(os.environ.get("CLOUD_SNIPER_CYCLES", "6"))
+    # Agresif ve Güvenli Instagram Hedef Kitle Takipçi Kazanım Döngüsü
+    try:
+        import instagram_bot
+        ig_growth = instagram_bot.run_targeted_growth_loop(
+            db.get_settings(), max_follows=6, max_likes=6, force=True
+        )
+        print("[Cloud Runner] Instagram Hedef Kitle Büyüme Raporu:", ig_growth)
+    except Exception as ge:
+        print("[Cloud Runner] Instagram büyüme hatası:", ge)
+
     for i in range(sniper_cycles):
         time.sleep(25)
         s_res = scanner.run_sniper_scan(trigger_notifications=True)

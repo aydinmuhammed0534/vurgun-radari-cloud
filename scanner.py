@@ -941,27 +941,31 @@ def _dispatch_alerts(candidates_for_alert: List[Dict[str, Any]], settings: Dict[
         except Exception:
             pass
 
-        # Publish to Instagram Reels & Story ONLY if:
-        # 1. Instagram auto post is enabled
-        # 2. At least 2.5 hours passed since last Reel (giving Meta algorithm testing cohorts breathing room)
-        # 3. Deal is a viral follower-magnet banger (score >= 60.0)
         ig_enabled = str(settings.get("instagram_auto_post", "0")).strip() in ("1", "true")
+        if ig_enabled and png_path:
+            try:
+                import instagram_bot
+                story_res = instagram_bot.post_deal_story(alert_deal, png_path, settings)
+                if story_res.get("ok"):
+                    logger.info(f"Instagram Story posted with direct link sticker: {story_res.get('media_id')}")
+            except Exception as se:
+                logger.warning(f"Story post notice: {se}")
+
+        # Publish to Instagram Reels (paced to once every 2.5h for viral score >= 60 deals)
         deal_score = score_deal_attractiveness(alert_deal)
-        can_post_ig = (
+        can_post_reels = (
             ig_enabled
             and mp4_path
             and ((now_ts - _last_ig_post_epoch) >= MIN_IG_POST_INTERVAL_SECONDS)
             and (deal_score >= 60.0)
         )
-        if can_post_ig:
+        if can_post_reels:
             try:
                 import instagram_bot
                 ig_res = instagram_bot.post_deal_reels(alert_deal, mp4_path, settings)
                 if ig_res.get("ok"):
                     _last_ig_post_epoch = int(time.time())
                     _save_posted_history()
-                if png_path:
-                    instagram_bot.post_deal_story(alert_deal, png_path, settings)
             except Exception:
                 pass
 

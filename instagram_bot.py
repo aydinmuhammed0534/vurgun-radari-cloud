@@ -161,6 +161,18 @@ def post_deal_story(deal: Dict[str, Any], image_path: str, settings: Dict[str, s
             kwargs["links"] = links
         media = cl.photo_upload_to_story(image_path, **kwargs)
         logger.info(f"Story uploaded successfully with link sticker! Media ID: {media.pk}")
+
+        # Automatically add story to "⚡️ Sıcak Fırsatlar" Highlight
+        try:
+            highlights = cl.user_highlights(cl.user_id)
+            target_hl = next((h for h in highlights if "Fırsat" in h.title or "Dip" in h.title), None)
+            if target_hl:
+                cl.highlight_change_reel(target_hl.pk, added_media_ids=[media.pk])
+            else:
+                cl.highlight_create("⚡️ Sıcak Fırsatlar", [media.pk])
+        except Exception as he:
+            logger.debug(f"Highlight sync notice: {he}")
+
         return {"ok": True, "media_id": media.pk}
     except Exception as e:
         logger.error(f"Story upload error: {e}")
@@ -184,6 +196,9 @@ TARGET_DEAL_HUBS = [
     {"username": "firsatcik", "id": "54790762935"},
     {"username": "firsatatikla", "id": "45546466216"},
     {"username": "webtekno", "id": "985715137"},
+    {"username": "hepsiburada", "id": "206233365"},
+    {"username": "trendyolcom", "id": "224957037"},
+    {"username": "firsatnobeti", "id": "31857454955"},
 ]
 
 
@@ -208,9 +223,9 @@ def _save_growth_state(state: Dict[str, Any]) -> None:
 
 def run_targeted_growth_loop(
     settings: Dict[str, str],
-    max_follows: int = 3,
-    max_likes: int = 3,
-    cooldown_seconds: int = 900,
+    max_follows: int = 6,
+    max_likes: int = 6,
+    cooldown_seconds: int = 300,
     force: bool = False,
 ) -> Dict[str, Any]:
     """
@@ -238,9 +253,9 @@ def run_targeted_growth_loop(
         today_key, {"follows": 0, "likes": 0, "unfollows": 0}
     )
 
-    # 2. Strict 24h anti-ban limits
-    DAILY_MAX_FOLLOWS = 50
-    DAILY_MAX_LIKES = 50
+    # 2. Strict 24h anti-ban limits (raised for aggressive growth)
+    DAILY_MAX_FOLLOWS = 120
+    DAILY_MAX_LIKES = 120
 
     if daily["follows"] >= DAILY_MAX_FOLLOWS and daily["likes"] >= DAILY_MAX_LIKES:
         logger.info(f"Daily Instagram action limit reached for {today_key}. Resting.")
@@ -286,7 +301,7 @@ def run_targeted_growth_loop(
                     daily["follows"] += 1
                     followed_this = True
                     logger.info(f"Followed targeted shopper @{u.username} (Total today: {daily['follows']})")
-                    time.sleep(random.uniform(12.0, 22.0))
+                    time.sleep(random.uniform(7.0, 14.0))
             except Exception as fe:
                 logger.warning(f"Follow error on @{u.username}: {fe}")
                 if "feedback_required" in str(fe).lower() or "challenge_required" in str(fe).lower():
@@ -305,7 +320,7 @@ def run_targeted_growth_loop(
                     daily["likes"] += 1
                     liked_this = True
                     logger.info(f"Liked post of @{u.username} (Total likes today: {daily['likes']})")
-                    time.sleep(random.uniform(10.0, 18.0))
+                    time.sleep(random.uniform(5.0, 10.0))
             except Exception as le:
                 logger.warning(f"Like error on @{u.username}: {le}")
 
