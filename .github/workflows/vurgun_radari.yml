@@ -40,6 +40,7 @@ jobs:
             vurgun_radari.db
             posted_history.json
             static/ig_session.json
+            static/ig_growth_state.json
           key: vurgun-db-${{ github.run_id }}
           restore-keys: |
             vurgun-db-

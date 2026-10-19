@@ -1,0 +1,68 @@
+{
+  "engaged_users": {
+    "65811963689": {
+      "username": "emin__1434",
+      "ts": 1792422427,
+      "action": "follow",
+      "target_hub": "firsatatikla",
+      "unfollowed": false
+    },
+    "60590102844": {
+      "username": "karasoy26",
+      "ts": 1792422427,
+      "action": "follow+like",
+      "target_hub": "firsatatikla",
+      "unfollowed": false
+    },
+    "374953194": {
+      "username": "fatma_81dursun",
+      "ts": 1792422427,
+      "action": "view",
+      "target_hub": "firsatatikla",
+      "unfollowed": false
+    },
+    "2273649741": {
+      "username": "serap.algul",
+      "ts": 1792422427,
+      "action": "view",
+      "target_hub": "firsatatikla",
+      "unfollowed": false
+    },
+    "1550223861": {
+      "username": "ibrahimmihribanpetek",
+      "ts": 1792422427,
+      "action": "view",
+      "target_hub": "firsatatikla",
+      "unfollowed": false
+    },
+    "62418676203": {
+      "username": "aylasavasci",
+      "ts": 1792422427,
+      "action": "view",
+      "target_hub": "firsatatikla",
+      "unfollowed": false
+    },
+    "54324770386": {
+      "username": "alpertugratekerek",
+      "ts": 1792422427,
+      "action": "view",
+      "target_hub": "firsatatikla",
+      "unfollowed": false
+    },
+    "27178669110": {
+      "username": "fatihaygun6",
+      "ts": 1792422427,
+      "action": "like",
+      "target_hub": "firsatatikla",
+      "unfollowed": false
+    }
+  },
+  "daily_stats": {
+    "2026-10-19": {
+      "follows": 2,
+      "likes": 2,
+      "unfollows": 0
+    }
+  },
+  "last_run_ts": 1792422427
+}

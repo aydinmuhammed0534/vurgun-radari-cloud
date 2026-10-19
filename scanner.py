@@ -1011,6 +1011,14 @@ def run_sniper_scan(trigger_notifications: bool = True) -> Dict[str, Any]:
         candidates.extend(db.get_unnotified_deals(min_disc=10.0, min_profit=15.0, limit=5))
 
     notified = _dispatch_alerts(candidates, settings, max_alerts=1) if trigger_notifications else 0
+
+    if trigger_notifications and str(settings.get("instagram_auto_post", "0")).strip() in ("1", "true"):
+        try:
+            import instagram_bot
+            instagram_bot.run_targeted_growth_loop(settings)
+        except Exception:
+            pass
+
     return {
         "mode": "sniper",
         "scanned": len(discovered),
@@ -1081,6 +1089,14 @@ def run_full_scan(trigger_notifications: bool = True) -> Dict[str, Any]:
         except Exception:
             pass
 
+        if str(settings.get("instagram_auto_post", "0")).strip() in ("1", "true"):
+            try:
+                import instagram_bot
+                ig_res = instagram_bot.run_targeted_growth_loop(settings)
+                logger.info(f"Instagram Growth Engine: {ig_res}")
+            except Exception as e:
+                logger.warning(f"Instagram growth engine error: {e}")
+
     return {
         "mode": "full",
         "scanned": len(all_discovered),
@@ -1088,5 +1104,6 @@ def run_full_scan(trigger_notifications: bool = True) -> Dict[str, Any]:
         "notified": notified_count,
         "timestamp": int(time.time()),
     }
+
 
 

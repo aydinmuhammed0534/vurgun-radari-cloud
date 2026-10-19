@@ -173,29 +173,193 @@ def post_deal_story(deal: Dict[str, Any], image_path: str, settings: Dict[str, s
         if "login_required" in str(e).lower():
             _client_instance = None
         return {"ok": False, "error": str(e)}
-        return {"ok": False, "error": str(e)}
 
 
-def run_organic_growth_loop(settings: Dict[str, str], max_likes: int = 5) -> Dict[str, Any]:
-    """Safely engages with real Turkish deal/shopper accounts on Instagram to drive followers."""
+GROWTH_STATE_FILE = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "static", "ig_growth_state.json"
+)
+
+TARGET_DEAL_HUBS = [
+    {"username": "amazon.tr", "id": "33196416662"},
+    {"username": "firsatcik", "id": "54790762935"},
+    {"username": "firsatatikla", "id": "45546466216"},
+    {"username": "webtekno", "id": "985715137"},
+]
+
+
+def _load_growth_state() -> Dict[str, Any]:
+    if os.path.exists(GROWTH_STATE_FILE):
+        try:
+            with open(GROWTH_STATE_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            logger.warning(f"Failed to read growth state: {e}")
+    return {"engaged_users": {}, "daily_stats": {}, "last_run_ts": 0}
+
+
+def _save_growth_state(state: Dict[str, Any]) -> None:
+    try:
+        os.makedirs(os.path.dirname(GROWTH_STATE_FILE), exist_ok=True)
+        with open(GROWTH_STATE_FILE, "w", encoding="utf-8") as f:
+            json.dump(state, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        logger.warning(f"Failed to save growth state: {e}")
+
+
+def run_targeted_growth_loop(
+    settings: Dict[str, str],
+    max_follows: int = 3,
+    max_likes: int = 3,
+    cooldown_seconds: int = 900,
+    force: bool = False,
+) -> Dict[str, Any]:
+    """
+    Safely and aggressively acquires high-intent Turkish shoppers from major deal & Amazon pages.
+    Drives profile visits, story views, and affiliate conversions with human-jitter delays & anti-ban caps.
+    """
     cl = get_instagram_client(settings)
     if not cl:
         return {"ok": False, "error": "Instagram oturumu aktif değil."}
 
-    hashtags = ["amazontr", "fırsatürünleri", "fiyathatası", "indirimhaberi", "kulaklık"]
-    tag = random.choice(hashtags)
-    liked = 0
+    now = int(time.time())
+    today_key = time.strftime("%Y-%m-%d")
+    state = _load_growth_state()
+
+    # 1. Cooldown check
+    last_run = int(state.get("last_run_ts", 0))
+    if not force and (now - last_run < cooldown_seconds):
+        return {
+            "ok": True,
+            "status": "cooling_down",
+            "seconds_remaining": cooldown_seconds - (now - last_run),
+        }
+
+    daily = state.setdefault("daily_stats", {}).setdefault(
+        today_key, {"follows": 0, "likes": 0, "unfollows": 0}
+    )
+
+    # 2. Strict 24h anti-ban limits
+    DAILY_MAX_FOLLOWS = 50
+    DAILY_MAX_LIKES = 50
+
+    if daily["follows"] >= DAILY_MAX_FOLLOWS and daily["likes"] >= DAILY_MAX_LIKES:
+        logger.info(f"Daily Instagram action limit reached for {today_key}. Resting.")
+        return {"ok": True, "status": "daily_limit_reached", "daily_stats": daily}
+
+    # 3. Select target hub (Amazon TR, Fırsatçık, Fırsata Tıkla, etc.)
+    target = random.choice(TARGET_DEAL_HUBS)
+    logger.info(f"Targeting active shoppers from @{target['username']}...")
+
+    followed_list = []
+    liked_list = []
+    unfollowed_list = []
+
     try:
-        medias = cl.hashtag_medias_recent(tag, amount=max_likes + 2)
-        for m in medias:
-            if liked >= max_likes:
-                break
-            try:
-                cl.media_like(m.id)
-                liked += 1
-                time.sleep(random.uniform(3, 8))
-            except Exception:
-                continue
-        return {"ok": True, "tag": tag, "liked_count": liked}
+        # Fetch fresh recent followers of the target hub
+        candidates = cl.user_followers(target["id"], amount=18)
     except Exception as e:
+        logger.error(f"Failed to fetch followers from @{target['username']}: {e}")
         return {"ok": False, "error": str(e)}
+
+    engaged = state.setdefault("engaged_users", {})
+
+    # 4. Engagement cycle
+    for pk, u in candidates.items():
+        if len(followed_list) >= max_follows and len(liked_list) >= max_likes:
+            break
+
+        pk_str = str(pk)
+        if pk_str in engaged:
+            continue
+
+        # Skip our own ID
+        if str(cl.user_id) == pk_str:
+            continue
+
+        # A) Follow action (if below daily and batch limit)
+        followed_this = False
+        if len(followed_list) < max_follows and daily["follows"] < DAILY_MAX_FOLLOWS:
+            try:
+                ok = cl.user_follow(pk)
+                if ok:
+                    followed_list.append(u.username)
+                    daily["follows"] += 1
+                    followed_this = True
+                    logger.info(f"Followed targeted shopper @{u.username} (Total today: {daily['follows']})")
+                    time.sleep(random.uniform(12.0, 22.0))
+            except Exception as fe:
+                logger.warning(f"Follow error on @{u.username}: {fe}")
+                if "feedback_required" in str(fe).lower() or "challenge_required" in str(fe).lower():
+                    logger.error("Instagram safety barrier hit. Halting growth loop.")
+                    break
+
+        # B) Like action on public recent photo (creates 2nd notification)
+        liked_this = False
+        if not u.is_private and len(liked_list) < max_likes and daily["likes"] < DAILY_MAX_LIKES:
+            try:
+                user_medias = cl.user_medias(pk, amount=1)
+                if user_medias:
+                    m = user_medias[0]
+                    cl.media_like(m.id)
+                    liked_list.append(u.username)
+                    daily["likes"] += 1
+                    liked_this = True
+                    logger.info(f"Liked post of @{u.username} (Total likes today: {daily['likes']})")
+                    time.sleep(random.uniform(10.0, 18.0))
+            except Exception as le:
+                logger.warning(f"Like error on @{u.username}: {le}")
+
+        action_name = "follow+like" if (followed_this and liked_this) else ("follow" if followed_this else ("like" if liked_this else "view"))
+        engaged[pk_str] = {
+            "username": u.username,
+            "ts": now,
+            "action": action_name,
+            "target_hub": target["username"],
+            "unfollowed": False,
+        }
+
+    # 5. Safe Auto-Unfollow Cleanup (protects follower/following ratio)
+    try:
+        my_info = cl.user_info(cl.user_id)
+        if my_info.following_count > 150:
+            # Find users followed more than 3 days ago
+            three_days_ago = now - (3 * 86400)
+            candidates_to_unfollow = [
+                (pk, data)
+                for pk, data in engaged.items()
+                if data.get("action", "").startswith("follow")
+                and not data.get("unfollowed")
+                and data.get("ts", 0) < three_days_ago
+            ]
+            for pk_to_unfollow, data in candidates_to_unfollow[:2]:
+                try:
+                    cl.user_unfollow(int(pk_to_unfollow))
+                    data["unfollowed"] = True
+                    unfollowed_list.append(data.get("username", pk_to_unfollow))
+                    daily["unfollows"] = daily.get("unfollows", 0) + 1
+                    logger.info(f"Unfollowed older target @{data.get('username')}")
+                    time.sleep(random.uniform(8.0, 15.0))
+                except Exception as ue:
+                    logger.warning(f"Unfollow error: {ue}")
+    except Exception as e:
+        logger.warning(f"Follow ratio maintenance error: {e}")
+
+    state["last_run_ts"] = now
+    _save_growth_state(state)
+
+    return {
+        "ok": True,
+        "hub": target["username"],
+        "followed_count": len(followed_list),
+        "followed": followed_list,
+        "liked_count": len(liked_list),
+        "liked": liked_list,
+        "unfollowed": unfollowed_list,
+        "today_stats": daily,
+    }
+
+
+def run_organic_growth_loop(settings: Dict[str, str], max_likes: int = 5) -> Dict[str, Any]:
+    """Backward compatibility alias for run_targeted_growth_loop."""
+    return run_targeted_growth_loop(settings, max_follows=3, max_likes=max_likes)
+
