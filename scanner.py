@@ -951,7 +951,7 @@ def _dispatch_alerts(candidates_for_alert: List[Dict[str, Any]], settings: Dict[
             except Exception as se:
                 logger.warning(f"Story post notice: {se}")
 
-        # Publish to Instagram Reels (paced to once every 2.5h for viral score >= 60 deals)
+        # Publish to Instagram Feed: Diverse Content Mix (2-Scene Reels + High-Res Photo Grid Posts)
         deal_score = score_deal_attractiveness(alert_deal)
         can_post_reels = (
             ig_enabled
@@ -959,11 +959,24 @@ def _dispatch_alerts(candidates_for_alert: List[Dict[str, Any]], settings: Dict[
             and ((now_ts - _last_ig_post_epoch) >= MIN_IG_POST_INTERVAL_SECONDS)
             and (deal_score >= 60.0)
         )
+        posted_to_feed = False
         if can_post_reels:
             try:
                 import instagram_bot
                 ig_res = instagram_bot.post_deal_reels(alert_deal, mp4_path, settings)
                 if ig_res.get("ok"):
+                    _last_ig_post_epoch = int(time.time())
+                    _save_posted_history()
+                    posted_to_feed = True
+            except Exception:
+                pass
+
+        # If Reels wasn't posted or is on cooldown, publish as high-res Photo Grid Post (45 min interval)
+        if not posted_to_feed and ig_enabled and png_path and ((now_ts - _last_ig_post_epoch) >= 2700):
+            try:
+                import instagram_bot
+                photo_res = instagram_bot.post_deal_photo(alert_deal, png_path, settings)
+                if photo_res.get("ok"):
                     _last_ig_post_epoch = int(time.time())
                     _save_posted_history()
             except Exception:

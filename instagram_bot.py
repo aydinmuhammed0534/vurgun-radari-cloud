@@ -137,6 +137,28 @@ def post_deal_reels(deal: Dict[str, Any], video_path: str, settings: Dict[str, s
         return {"ok": False, "error": str(e)}
 
 
+def post_deal_photo(deal: Dict[str, Any], image_path: str, settings: Dict[str, str]) -> Dict[str, Any]:
+    """Posts a deal screenshot card as a clean, high-converting Photo Post to the Instagram feed."""
+    cl = get_instagram_client(settings)
+    if not cl:
+        return {"ok": False, "error": "Instagram oturumu açılamadı."}
+
+    if not os.path.exists(image_path):
+        return {"ok": False, "error": f"Görsel bulunamadı: {image_path}"}
+
+    caption = build_viral_reels_caption(deal, settings)
+    try:
+        media = cl.photo_upload(image_path, caption=caption)
+        logger.info(f"Feed Photo Post uploaded successfully! Media ID: {media.pk}")
+        return {"ok": True, "media_id": media.pk, "code": media.code}
+    except Exception as e:
+        logger.error(f"Feed Photo Post upload error: {e}")
+        if "login_required" in str(e).lower():
+            global _client_instance
+            _client_instance = None
+        return {"ok": False, "error": str(e)}
+
+
 def post_deal_story(deal: Dict[str, Any], image_path: str, settings: Dict[str, str]) -> Dict[str, Any]:
     """Posts an image to Instagram Stories with a clickable link sticker."""
     cl = get_instagram_client(settings)

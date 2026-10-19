@@ -315,43 +315,106 @@ def generate_deal_story(
     final.save(output_png, quality=98)
     print(f"Generated Amazon Screenshot deal story: {output_png}")
 
-    # 7. Generate high quality 30fps Reels video with background music and Ken Burns subtle zoom
+    # 7. Generate Dynamic 2-Scene Viral Reels Video (Hook Scene 1.5s + Deal Card 4.5s)
     ffmpeg_bin = shutil.which("ffmpeg") or "/opt/homebrew/bin/ffmpeg"
     if not os.path.exists(ffmpeg_bin) and os.path.exists("/usr/bin/ffmpeg"):
         ffmpeg_bin = "/usr/bin/ffmpeg"
+
+    # Create high-energy viral hook card for scene 1
+    hook_png = output_png.replace(".png", "_hook.png")
+    try:
+        hook_img = Image.new("RGB", (1080, 1920), (15, 17, 23))
+        h_draw = ImageDraw.Draw(hook_img)
+        # Red alert pill
+        h_draw.rounded_rectangle([60, 220, 1020, 360], radius=30, fill=(220, 38, 38))
+        f_h_alert = load_font("bold", 54)
+        h_draw.text((540, 290), "🚨 AMAZON'DA FİYAT HATASI!", fill=(255, 255, 255), anchor="mm", font=f_h_alert)
+
+        # Huge slashed market price
+        f_h_old = load_font("bold", 80)
+        old_txt = f"PİYASA: {market_price:,.0f} TL".replace(",", ".")
+        h_draw.text((540, 620), old_txt, fill=(156, 163, 175), anchor="mm", font=f_h_old)
+        h_box = h_draw.textbbox((540, 620), old_txt, anchor="mm", font=f_h_old)
+        h_draw.line([(h_box[0] - 20, 620), (h_box[2] + 20, 620)], fill=(239, 68, 68), width=10)
+
+        f_h_mid = load_font("bold", 54)
+        h_draw.text((540, 800), "DİP FİYATA DÜŞTÜ 👇", fill=(255, 255, 255), anchor="mm", font=f_h_mid)
+
+        # Huge deal price
+        f_h_price = load_font("bold", 155)
+        new_txt = f"{deal_price:,.0f} TL!".replace(",", ".")
+        h_draw.text((540, 1020), new_txt, fill=(250, 204, 21), anchor="mm", font=f_h_price)
+
+        # Badge: Discount
+        f_h_sub = load_font("bold", 56)
+        h_draw.text((540, 1260), f"🔥 %{discount_pct:.0f} İNDİRİM GELDİ", fill=(248, 113, 113), anchor="mm", font=f_h_sub)
+        f_h_cta = load_font("bold", 48)
+        h_draw.text((540, 1420), "👉 LİNK HİKAYEDE VE BİYOGRAFİDE!", fill=(255, 255, 255), anchor="mm", font=f_h_cta)
+
+        hook_img.save(hook_png, quality=95)
+    except Exception as he:
+        hook_png = None
 
     audio_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "audio")
     audio_files = []
     if os.path.isdir(audio_dir):
         audio_files = [os.path.join(audio_dir, f) for f in os.listdir(audio_dir) if f.lower().endswith((".mp3", ".wav", ".m4a"))]
 
-    cmd = [
-        ffmpeg_bin, "-y",
-        "-loop", "1", "-i", output_png
-    ]
+    os.makedirs(os.path.dirname(os.path.abspath(output_mp4)), exist_ok=True)
 
-    if audio_files:
+    # If hook scene is ready, generate dynamic 2-scene video with cut
+    video_generated = False
+    if hook_png and os.path.exists(hook_png) and audio_files:
         chosen_audio = random.choice(audio_files)
         start_sec = random.randint(5, 20)
-        cmd.extend([
+        filter_complex = (
+            "[0:v]scale=1080:1920,setsar=1,fps=30,trim=duration=1.5,zoompan=z='min(zoom+0.0015,1.08)':d=45:s=1080x1920:fps=30[v0];"
+            "[1:v]scale=1080:1920,setsar=1,fps=30,trim=duration=4.5,zoompan=z='min(zoom+0.0008,1.05)':d=135:s=1080x1920:fps=30[v1];"
+            "[v0][v1]concat=n=2:v=1:a=0[v]"
+        )
+        cmd_2scene = [
+            ffmpeg_bin, "-y",
+            "-loop", "1", "-i", hook_png,
+            "-loop", "1", "-i", output_png,
             "-ss", str(start_sec), "-t", "6", "-i", chosen_audio,
-            "-vf", "scale=1080:1920,zoompan=z='min(zoom+0.0006,1.05)':d=180:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1080x1920:fps=30",
-            "-af", "afade=t=in:ss=0:d=0.4,afade=t=out:st=5.2:d=0.8",
-            "-t", "6",
+            "-filter_complex", filter_complex,
+            "-map", "[v]", "-map", "2:a",
+            "-af", "afade=t=in:ss=0:d=0.3,afade=t=out:st=5.2:d=0.8",
             "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "fast", "-crf", "18",
-            "-c:a", "aac", "-b:a", "192k"
-        ])
-    else:
-        cmd.extend([
-            "-vf", "scale=1080:1920,zoompan=z='min(zoom+0.0006,1.05)':d=150:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1080x1920:fps=30",
-            "-t", "5",
-            "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "fast", "-crf", "18"
-        ])
+            "-c:a", "aac", "-b:a", "192k",
+            "-t", "6",
+            output_mp4
+        ]
+        try:
+            subprocess.run(cmd_2scene, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            video_generated = True
+            print(f"Generated dynamic 2-scene viral reels video: {output_mp4}")
+        except Exception:
+            video_generated = False
 
-    os.makedirs(os.path.dirname(os.path.abspath(output_mp4)), exist_ok=True)
-    cmd.append(output_mp4)
-    subprocess.run(cmd, check=True)
-    print(f"Generated perfect reels video with music: {output_mp4}")
+    if not video_generated:
+        # Fallback single image loop
+        cmd = [ffmpeg_bin, "-y", "-loop", "1", "-i", output_png]
+        if audio_files:
+            chosen_audio = random.choice(audio_files)
+            cmd.extend([
+                "-ss", "10", "-t", "6", "-i", chosen_audio,
+                "-vf", "scale=1080:1920,zoompan=z='min(zoom+0.0006,1.05)':d=180:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1080x1920:fps=30",
+                "-af", "afade=t=in:ss=0:d=0.4,afade=t=out:st=5.2:d=0.8",
+                "-t", "6",
+                "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "fast", "-crf", "18",
+                "-c:a", "aac", "-b:a", "192k",
+                output_mp4
+            ])
+        else:
+            cmd.extend([
+                "-vf", "scale=1080:1920,zoompan=z='min(zoom+0.0006,1.05)':d=150:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1080x1920:fps=30",
+                "-t", "5",
+                "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "fast", "-crf", "18",
+                output_mp4
+            ])
+        subprocess.run(cmd, check=True)
+        print(f"Generated single-scene reels video: {output_mp4}")
 
 
 def resolve_and_download_image(deal):
