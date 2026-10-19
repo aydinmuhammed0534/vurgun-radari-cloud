@@ -877,7 +877,7 @@ def score_deal_attractiveness(deal: Dict[str, Any]) -> float:
 
 
 def _dispatch_alerts(candidates_for_alert: List[Dict[str, Any]], settings: Dict[str, str], max_alerts: int = 1) -> int:
-    global _last_post_epoch
+    global _last_post_epoch, _last_ig_post_epoch
     auto_notify = settings.get("auto_notify", "1") == "1"
     if not auto_notify or not candidates_for_alert:
         return 0
