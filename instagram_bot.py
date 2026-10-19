@@ -253,46 +253,66 @@ def run_targeted_growth_loop(
         today_key, {"follows": 0, "likes": 0, "unfollows": 0}
     )
 
-    # 2. Strict 24h anti-ban limits (raised for aggressive growth)
-    DAILY_MAX_FOLLOWS = 120
-    DAILY_MAX_LIKES = 120
+    # 2. Strict 24h anti-ban limits (calibrated for high-velocity safe growth)
+    DAILY_MAX_FOLLOWS = 140
+    DAILY_MAX_LIKES = 150
+    DAILY_MAX_STORY_LIKES = 150
 
+    daily.setdefault("story_likes", 0)
     if daily["follows"] >= DAILY_MAX_FOLLOWS and daily["likes"] >= DAILY_MAX_LIKES:
         logger.info(f"Daily Instagram action limit reached for {today_key}. Resting.")
         return {"ok": True, "status": "daily_limit_reached", "daily_stats": daily}
 
-    # 3. Select target hub (Amazon TR, Fırsatçık, Fırsata Tıkla, etc.)
+    # 3. Select target hub
     target = random.choice(TARGET_DEAL_HUBS)
-    logger.info(f"Targeting active shoppers from @{target['username']}...")
+    logger.info(f"Sniping live online shoppers from @{target['username']}...")
 
     followed_list = []
     liked_list = []
+    story_liked_list = []
     unfollowed_list = []
 
+    candidates = []
+    # Strategy A: Sniping LIVE ONLINE LIKERS of the latest post (people currently holding their phone)
     try:
-        # Fetch fresh recent followers of the target hub
-        candidates = cl.user_followers(target["id"], amount=18)
-    except Exception as e:
-        logger.error(f"Failed to fetch followers from @{target['username']}: {e}")
-        return {"ok": False, "error": str(e)}
+        medias = cl.user_medias(target["id"], amount=1)
+        if medias:
+            likers = cl.media_likers(medias[0].id)
+            if likers:
+                candidates = likers[:25]
+                logger.info(f"Found {len(candidates)} live online likers on @{target['username']} latest post!")
+    except Exception as me:
+        logger.debug(f"Media liker fetch fallback: {me}")
+
+    # Strategy B: Fallback to fresh followers of the hub
+    if not candidates:
+        try:
+            f_dict = cl.user_followers(target["id"], amount=20)
+            candidates = list(f_dict.values())
+        except Exception as fe:
+            logger.error(f"Failed to fetch audience from @{target['username']}: {fe}")
+            return {"ok": False, "error": str(fe)}
 
     engaged = state.setdefault("engaged_users", {})
 
-    # 4. Engagement cycle
-    for pk, u in candidates.items():
+    # 4. Triple-Touchpoint Engagement Cycle
+    for u in candidates:
         if len(followed_list) >= max_follows and len(liked_list) >= max_likes:
             break
 
+        pk = u.pk
         pk_str = str(pk)
         if pk_str in engaged:
             continue
 
-        # Skip our own ID
         if str(cl.user_id) == pk_str:
             continue
 
-        # A) Follow action (if below daily and batch limit)
         followed_this = False
+        story_liked_this = False
+        liked_this = False
+
+        # Touchpoint 1: Follow
         if len(followed_list) < max_follows and daily["follows"] < DAILY_MAX_FOLLOWS:
             try:
                 ok = cl.user_follow(pk)
@@ -300,17 +320,32 @@ def run_targeted_growth_loop(
                     followed_list.append(u.username)
                     daily["follows"] += 1
                     followed_this = True
-                    logger.info(f"Followed targeted shopper @{u.username} (Total today: {daily['follows']})")
-                    time.sleep(random.uniform(7.0, 14.0))
+                    logger.info(f"Followed live shopper @{u.username} (Today: {daily['follows']}/{DAILY_MAX_FOLLOWS})")
+                    time.sleep(random.uniform(5.0, 9.0))
             except Exception as fe:
                 logger.warning(f"Follow error on @{u.username}: {fe}")
                 if "feedback_required" in str(fe).lower() or "challenge_required" in str(fe).lower():
                     logger.error("Instagram safety barrier hit. Halting growth loop.")
                     break
 
-        # B) Like action on public recent photo (creates 2nd notification)
-        liked_this = False
-        if not u.is_private and len(liked_list) < max_likes and daily["likes"] < DAILY_MAX_LIKES:
+        # Touchpoint 2: Story Sniper (View + Like active 24h story -> instant red heart DM notification!)
+        if daily["story_likes"] < DAILY_MAX_STORY_LIKES:
+            try:
+                user_stories = cl.user_stories(pk)
+                if user_stories:
+                    st = user_stories[0]
+                    cl.story_seen([st.pk])
+                    cl.story_like(st.id)
+                    daily["story_likes"] += 1
+                    story_liked_this = True
+                    story_liked_list.append(u.username)
+                    logger.info(f"Liked active story of @{u.username}! ❤️")
+                    time.sleep(random.uniform(4.0, 7.0))
+            except Exception:
+                pass
+
+        # Touchpoint 3: Post Like (if public, likes their recent photo)
+        if not getattr(u, "is_private", False) and len(liked_list) < max_likes and daily["likes"] < DAILY_MAX_LIKES:
             try:
                 user_medias = cl.user_medias(pk, amount=1)
                 if user_medias:
@@ -320,40 +355,47 @@ def run_targeted_growth_loop(
                     daily["likes"] += 1
                     liked_this = True
                     logger.info(f"Liked post of @{u.username} (Total likes today: {daily['likes']})")
-                    time.sleep(random.uniform(5.0, 10.0))
+                    time.sleep(random.uniform(4.0, 8.0))
             except Exception as le:
                 logger.warning(f"Like error on @{u.username}: {le}")
 
-        action_name = "follow+like" if (followed_this and liked_this) else ("follow" if followed_this else ("like" if liked_this else "view"))
-        engaged[pk_str] = {
-            "username": u.username,
-            "ts": now,
-            "action": action_name,
-            "target_hub": target["username"],
-            "unfollowed": False,
-        }
+        if followed_this or story_liked_this or liked_this:
+            actions = []
+            if followed_this:
+                actions.append("follow")
+            if story_liked_this:
+                actions.append("story_like")
+            if liked_this:
+                actions.append("post_like")
+
+            engaged[pk_str] = {
+                "username": u.username,
+                "ts": now,
+                "action": "+".join(actions),
+                "target_hub": target["username"],
+                "unfollowed": False,
+            }
 
     # 5. Safe Auto-Unfollow Cleanup (protects follower/following ratio)
     try:
         my_info = cl.user_info(cl.user_id)
-        if my_info.following_count > 150:
-            # Find users followed more than 3 days ago
+        if my_info.following_count > 250:
             three_days_ago = now - (3 * 86400)
             candidates_to_unfollow = [
                 (pk, data)
                 for pk, data in engaged.items()
-                if data.get("action", "").startswith("follow")
+                if "follow" in data.get("action", "")
                 and not data.get("unfollowed")
                 and data.get("ts", 0) < three_days_ago
             ]
-            for pk_to_unfollow, data in candidates_to_unfollow[:2]:
+            for pk_to_unfollow, data in candidates_to_unfollow[:3]:
                 try:
                     cl.user_unfollow(int(pk_to_unfollow))
                     data["unfollowed"] = True
                     unfollowed_list.append(data.get("username", pk_to_unfollow))
                     daily["unfollows"] = daily.get("unfollows", 0) + 1
-                    logger.info(f"Unfollowed older target @{data.get('username')}")
-                    time.sleep(random.uniform(8.0, 15.0))
+                    logger.info(f"Unfollowed older non-converted target @{data.get('username')}")
+                    time.sleep(random.uniform(6.0, 12.0))
                 except Exception as ue:
                     logger.warning(f"Unfollow error: {ue}")
     except Exception as e:
@@ -367,6 +409,8 @@ def run_targeted_growth_loop(
         "hub": target["username"],
         "followed_count": len(followed_list),
         "followed": followed_list,
+        "story_liked_count": len(story_liked_list),
+        "story_liked": story_liked_list,
         "liked_count": len(liked_list),
         "liked": liked_list,
         "unfollowed": unfollowed_list,

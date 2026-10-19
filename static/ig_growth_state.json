@@ -307,14 +307,218 @@
       "action": "view",
       "target_hub": "trendyolcom",
       "unfollowed": false
+    },
+    "53172220987": {
+      "username": "tatianaadam18",
+      "ts": 1792433322,
+      "action": "follow+like",
+      "target_hub": "trendyolcom",
+      "unfollowed": false
+    },
+    "69525075719": {
+      "username": "eeliif_ayaz",
+      "ts": 1792433322,
+      "action": "follow",
+      "target_hub": "trendyolcom",
+      "unfollowed": false
+    },
+    "71369604634": {
+      "username": "aysimaa.batur",
+      "ts": 1792433322,
+      "action": "follow",
+      "target_hub": "trendyolcom",
+      "unfollowed": false
+    },
+    "79113998823": {
+      "username": "sekra.emin.aygun",
+      "ts": 1792433322,
+      "action": "follow",
+      "target_hub": "trendyolcom",
+      "unfollowed": false
+    },
+    "66530808852": {
+      "username": "fatma.ayzc61",
+      "ts": 1792433322,
+      "action": "follow",
+      "target_hub": "trendyolcom",
+      "unfollowed": false
+    },
+    "23615003895": {
+      "username": "nurgul442026",
+      "ts": 1792433322,
+      "action": "follow",
+      "target_hub": "trendyolcom",
+      "unfollowed": false
+    },
+    "38922552826": {
+      "username": "imyuliiaa_",
+      "ts": 1792433622,
+      "action": "follow+like",
+      "target_hub": "firsatatikla",
+      "unfollowed": false
+    },
+    "4785083546": {
+      "username": "alegreedili",
+      "ts": 1792433622,
+      "action": "follow+like",
+      "target_hub": "firsatatikla",
+      "unfollowed": false
+    },
+    "3047619882": {
+      "username": "gulcan_postall",
+      "ts": 1792433622,
+      "action": "follow+like",
+      "target_hub": "firsatatikla",
+      "unfollowed": false
+    },
+    "8167388541": {
+      "username": "hafsa_zeynep34",
+      "ts": 1792433622,
+      "action": "follow+like",
+      "target_hub": "firsatatikla",
+      "unfollowed": false
+    },
+    "1469456287": {
+      "username": "ilk1903nur",
+      "ts": 1792433622,
+      "action": "follow+like",
+      "target_hub": "firsatatikla",
+      "unfollowed": false
+    },
+    "61115719334": {
+      "username": "farukerdogan3458",
+      "ts": 1792433622,
+      "action": "follow",
+      "target_hub": "firsatatikla",
+      "unfollowed": false
+    },
+    "74118113120": {
+      "username": "qgokhan.isik",
+      "ts": 1792433622,
+      "action": "view",
+      "target_hub": "firsatatikla",
+      "unfollowed": false
+    },
+    "61630538764": {
+      "username": "batuhancolakca",
+      "ts": 1792433622,
+      "action": "view",
+      "target_hub": "firsatatikla",
+      "unfollowed": false
+    },
+    "67254327062": {
+      "username": "ismetalkan11",
+      "ts": 1792433622,
+      "action": "view",
+      "target_hub": "firsatatikla",
+      "unfollowed": false
+    },
+    "75941903552": {
+      "username": "emine248428",
+      "ts": 1792433622,
+      "action": "view",
+      "target_hub": "firsatatikla",
+      "unfollowed": false
+    },
+    "44602645938": {
+      "username": "eda_balitatli",
+      "ts": 1792433622,
+      "action": "view",
+      "target_hub": "firsatatikla",
+      "unfollowed": false
+    },
+    "6237967490": {
+      "username": "sinersahin",
+      "ts": 1792433622,
+      "action": "view",
+      "target_hub": "firsatatikla",
+      "unfollowed": false
+    },
+    "1400451587": {
+      "username": "_mehmetalisecgin",
+      "ts": 1792433622,
+      "action": "view",
+      "target_hub": "firsatatikla",
+      "unfollowed": false
+    },
+    "1401985094": {
+      "username": "berber_kadir",
+      "ts": 1792433622,
+      "action": "view",
+      "target_hub": "firsatatikla",
+      "unfollowed": false
+    },
+    "64873871599": {
+      "username": "aykansuheyla",
+      "ts": 1792434065,
+      "action": "follow",
+      "target_hub": "firsatnobeti",
+      "unfollowed": false
+    },
+    "332926207": {
+      "username": "halilibrahimsbm",
+      "ts": 1792434065,
+      "action": "follow",
+      "target_hub": "firsatnobeti",
+      "unfollowed": false
+    },
+    "78172176562": {
+      "username": "has35849",
+      "ts": 1792434065,
+      "action": "follow",
+      "target_hub": "firsatnobeti",
+      "unfollowed": false
+    },
+    "6633148842": {
+      "username": "muge_sanat",
+      "ts": 1792434065,
+      "action": "follow",
+      "target_hub": "firsatnobeti",
+      "unfollowed": false
+    },
+    "78694741883": {
+      "username": "nusret_aras06",
+      "ts": 1792434065,
+      "action": "follow",
+      "target_hub": "firsatnobeti",
+      "unfollowed": false
+    },
+    "38043405709": {
+      "username": "emine.akkas.39142",
+      "ts": 1792434065,
+      "action": "follow+post_like",
+      "target_hub": "firsatnobeti",
+      "unfollowed": false
+    },
+    "13753180111": {
+      "username": "yavuz.yildiz.54966",
+      "ts": 1792434065,
+      "action": "post_like",
+      "target_hub": "firsatnobeti",
+      "unfollowed": false
+    },
+    "79576951303": {
+      "username": "nwr79584",
+      "ts": 1792434065,
+      "action": "post_like",
+      "target_hub": "firsatnobeti",
+      "unfollowed": false
+    },
+    "16170316610": {
+      "username": "yalcinkolakin",
+      "ts": 1792434065,
+      "action": "post_like",
+      "target_hub": "firsatnobeti",
+      "unfollowed": false
     }
   },
   "daily_stats": {
     "2026-10-19": {
-      "follows": 10,
-      "likes": 4,
-      "unfollows": 0
+      "follows": 28,
+      "likes": 14,
+      "unfollows": 0,
+      "story_likes": 0
     }
   },
-  "last_run_ts": 1792433009
+  "last_run_ts": 1792434065
 }
